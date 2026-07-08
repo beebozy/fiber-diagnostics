@@ -53,10 +53,14 @@ pub async fn get_payment(&self, payment_hash: &str) -> anyhow::Result<serde_json
     self.call("get_payment", json!([payment_hash])).await
 }
 
-pub async fn parse_invoice(&self, invoice &str)->anyhow::Result<serde_json::value> {
+pub async fn parse_invoice(&self, invoice: &str) -> anyhow::Result<serde_json::Value> {
     self.call("parse_invoice", json!([invoice])).await
 }
 
 pub async fn get_invoice(&self, payment_hash: &str) -> anyhow::Result<serde_json::Value> {
     self.call("get_invoice", json!([{ "payment_hash": payment_hash }])).await
 }
+
+}
+
+
