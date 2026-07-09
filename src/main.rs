@@ -1,4 +1,5 @@
 mod rpc_client;
+mod diagnostics;
 use rpc_client::FiberRpcClient;
 
 #[derive(sqlx::FromRow, Debug)]
@@ -211,6 +212,8 @@ async fn poll_graph(client: &FiberRpcClient, pool: &sqlx::SqlitePool) {
     }
 }
 
+use diagnostics::engine::DiagnosticsEngine;
+use diagnostics::repository::load_nodes;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

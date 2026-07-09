@@ -1,0 +1,12 @@
+/Users/user/Desktop/projects/fiber-hackathon/fiber-diagnostics/target/debug/deps/serde-582e548f6d621ffd.d: /Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/user/Desktop/projects/fiber-hackathon/fiber-diagnostics/target/debug/build/serde-2a0b31bf2fa04134/out/private.rs
+
+/Users/user/Desktop/projects/fiber-hackathon/fiber-diagnostics/target/debug/deps/libserde-582e548f6d621ffd.rmeta: /Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/user/Desktop/projects/fiber-hackathon/fiber-diagnostics/target/debug/build/serde-2a0b31bf2fa04134/out/private.rs
+
+/Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/Users/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/Users/user/Desktop/projects/fiber-hackathon/fiber-diagnostics/target/debug/build/serde-2a0b31bf2fa04134/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/user/Desktop/projects/fiber-hackathon/fiber-diagnostics/target/debug/build/serde-2a0b31bf2fa04134/out

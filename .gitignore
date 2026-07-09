@@ -1,0 +1,6 @@
+# SQLite DB files
+fiber-diagnostics.db
+*.db-shm
+*.db-wal
+# Cargo build output
+/target
