@@ -1,6 +1,21 @@
-mod rpc_client;
 mod diagnostics;
+mod payment_tracker;
+mod rpc_client;
+use axum::{
+    extract::{Extension, Path, Query},
+    http::StatusCode,
+    routing::get,
+    Json, Router,
+};
+use diagnostics::engine::DiagnosticsEngine;
+use diagnostics::issue::Issue;
+use diagnostics::repository::load_data;
 use rpc_client::FiberRpcClient;
+use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use tower_http::cors::{Any, CorsLayer};
 
 #[derive(sqlx::FromRow, Debug)]
 struct MonitoredNode {
@@ -10,7 +25,7 @@ struct MonitoredNode {
 
 async fn fetch_monitored_nodes(pool: &sqlx::SqlitePool) -> anyhow::Result<Vec<MonitoredNode>> {
     let nodes = sqlx::query_as::<_, MonitoredNode>(
-        "SELECT id, rpc_url FROM monitored_nodes WHERE enabled = 1"
+        "SELECT id, rpc_url FROM monitored_nodes WHERE enabled = 1",
     )
     .fetch_all(pool)
     .await?;
@@ -52,8 +67,32 @@ async fn poll_node(node_id: &str, rpc_url: &str, pool: &sqlx::SqlitePool) {
     let finished = chrono::Utc::now().to_rfc3339();
 
     match &info_result {
-        Ok(_) => log_poller_run(pool, "node_info", Some(node_id), None, true, None, &started, &finished).await,
-        Err(e) => log_poller_run(pool, "node_info", Some(node_id), None, false, Some(&e.to_string()), &started, &finished).await,
+        Ok(_) => {
+            log_poller_run(
+                pool,
+                "node_info",
+                Some(node_id),
+                None,
+                true,
+                None,
+                &started,
+                &finished,
+            )
+            .await
+        }
+        Err(e) => {
+            log_poller_run(
+                pool,
+                "node_info",
+                Some(node_id),
+                None,
+                false,
+                Some(&e.to_string()),
+                &started,
+                &finished,
+            )
+            .await
+        }
     }
 
     match info_result {
@@ -92,30 +131,55 @@ async fn poll_node(node_id: &str, rpc_url: &str, pool: &sqlx::SqlitePool) {
     let finished = chrono::Utc::now().to_rfc3339();
 
     match &peers_result {
-        Ok(_) => log_poller_run(pool, "list_peers", Some(node_id), None, true, None, &started, &finished).await,
-        Err(e) => log_poller_run(pool, "list_peers", Some(node_id), None, false, Some(&e.to_string()), &started, &finished).await,
+        Ok(_) => {
+            log_poller_run(
+                pool,
+                "list_peers",
+                Some(node_id),
+                None,
+                true,
+                None,
+                &started,
+                &finished,
+            )
+            .await
+        }
+        Err(e) => {
+            log_poller_run(
+                pool,
+                "list_peers",
+                Some(node_id),
+                None,
+                false,
+                Some(&e.to_string()),
+                &started,
+                &finished,
+            )
+            .await
+        }
     }
 
-    if let Ok(result) = peers_result {
-        if let Some(peers) = result["peers"].as_array() {
-            for peer in peers {
-                let _ = sqlx::query(
-                    "INSERT INTO peer_status_current (node_id, peer_pubkey, address, connected, last_seen_at, updated_at)
-                     VALUES (?, ?, ?, 1, ?, ?)
-                     ON CONFLICT(node_id, peer_pubkey) DO UPDATE SET
-                        address=excluded.address, connected=1,
-                        last_seen_at=excluded.last_seen_at, updated_at=excluded.updated_at"
-                )
-                .bind(node_id)
-                .bind(peer["pubkey"].as_str())
-                .bind(peer["address"].as_str())
-                .bind(&now).bind(&now)
-                .execute(pool).await;
+    match &peers_result {
+        Ok(result) => {
+            if let Some(peers) = result["peers"].as_array() {
+                for peer in peers {
+                    let _ = sqlx::query(
+                        "INSERT INTO peer_status_current (node_id, peer_pubkey, address, connected, last_seen_at, updated_at)
+                         VALUES (?, ?, ?, 1, ?, ?)
+                         ON CONFLICT(node_id, peer_pubkey) DO UPDATE SET
+                            address=excluded.address, connected=1,
+                            last_seen_at=excluded.last_seen_at, updated_at=excluded.updated_at"
+                    )
+                    .bind(node_id)
+                    .bind(peer["pubkey"].as_str())
+                    .bind(peer["address"].as_str())
+                    .bind(&now).bind(&now)
+                    .execute(pool).await;
+                }
+                println!("[{node_id}] list_peers OK — {} peers", peers.len());
             }
-            println!("[{node_id}] list_peers OK — {} peers", peers.len());
         }
-    } else if let Err(e) = &client.list_peers().await {
-        eprintln!("[{node_id}] list_peers failed: {e}");
+        Err(e) => eprintln!("[{node_id}] list_peers failed: {e}"),
     }
 
     // --- list_channels ---
@@ -124,8 +188,32 @@ async fn poll_node(node_id: &str, rpc_url: &str, pool: &sqlx::SqlitePool) {
     let finished = chrono::Utc::now().to_rfc3339();
 
     match &channels_result {
-        Ok(_) => log_poller_run(pool, "list_channels", Some(node_id), None, true, None, &started, &finished).await,
-        Err(e) => log_poller_run(pool, "list_channels", Some(node_id), None, false, Some(&e.to_string()), &started, &finished).await,
+        Ok(_) => {
+            log_poller_run(
+                pool,
+                "list_channels",
+                Some(node_id),
+                None,
+                true,
+                None,
+                &started,
+                &finished,
+            )
+            .await
+        }
+        Err(e) => {
+            log_poller_run(
+                pool,
+                "list_channels",
+                Some(node_id),
+                None,
+                false,
+                Some(&e.to_string()),
+                &started,
+                &finished,
+            )
+            .await
+        }
     }
 
     if let Ok(result) = channels_result {
@@ -186,8 +274,32 @@ async fn poll_graph(client: &FiberRpcClient, pool: &sqlx::SqlitePool) {
     let finished = chrono::Utc::now().to_rfc3339();
 
     match &result {
-        Ok(_) => log_poller_run(pool, "graph_nodes", None, Some("global"), true, None, &started, &finished).await,
-        Err(e) => log_poller_run(pool, "graph_nodes", None, Some("global"), false, Some(&e.to_string()), &started, &finished).await,
+        Ok(_) => {
+            log_poller_run(
+                pool,
+                "graph_nodes",
+                None,
+                Some("global"),
+                true,
+                None,
+                &started,
+                &finished,
+            )
+            .await
+        }
+        Err(e) => {
+            log_poller_run(
+                pool,
+                "graph_nodes",
+                None,
+                Some("global"),
+                false,
+                Some(&e.to_string()),
+                &started,
+                &finished,
+            )
+            .await
+        }
     }
 
     if let Ok(r) = result {
@@ -201,8 +313,32 @@ async fn poll_graph(client: &FiberRpcClient, pool: &sqlx::SqlitePool) {
     let finished = chrono::Utc::now().to_rfc3339();
 
     match &result {
-        Ok(_) => log_poller_run(pool, "graph_channels", None, Some("global"), true, None, &started, &finished).await,
-        Err(e) => log_poller_run(pool, "graph_channels", None, Some("global"), false, Some(&e.to_string()), &started, &finished).await,
+        Ok(_) => {
+            log_poller_run(
+                pool,
+                "graph_channels",
+                None,
+                Some("global"),
+                true,
+                None,
+                &started,
+                &finished,
+            )
+            .await
+        }
+        Err(e) => {
+            log_poller_run(
+                pool,
+                "graph_channels",
+                None,
+                Some("global"),
+                false,
+                Some(&e.to_string()),
+                &started,
+                &finished,
+            )
+            .await
+        }
     }
 
     if let Ok(r) = result {
@@ -212,15 +348,87 @@ async fn poll_graph(client: &FiberRpcClient, pool: &sqlx::SqlitePool) {
     }
 }
 
-use diagnostics::engine::DiagnosticsEngine;
-use diagnostics::repository::load_nodes;
+#[derive(Debug, Deserialize)]
+struct IssueQuery {
+    kind: Option<String>,
+    severity: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct IssuesResponse {
+    generated_at: String,
+    count: usize,
+    issues: Vec<Issue>,
+}
+
+#[derive(Debug, Serialize)]
+struct ApiError {
+    error: String,
+}
+
+fn apply_filters(mut issues: Vec<Issue>, filter: &IssueQuery) -> Vec<Issue> {
+    if let Some(kind) = &filter.kind {
+        issues.retain(|issue| issue.kind == *kind);
+    }
+    if let Some(severity) = &filter.severity {
+        issues.retain(|issue| issue.severity.to_string().eq_ignore_ascii_case(severity));
+    }
+    issues
+}
+
+fn wrap(issues: Vec<Issue>) -> IssuesResponse {
+    IssuesResponse {
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        count: issues.len(),
+        issues,
+    }
+}
+
+type IssueCache = Arc<RwLock<Vec<Issue>>>;
+
+async fn refresh_issue_cache(cache: &IssueCache, pool: &sqlx::SqlitePool) {
+    match load_data(pool).await {
+        Ok(data) => {
+            let issues = DiagnosticsEngine::evaluate(data);
+            let mut write_guard = cache.write().await;
+            *write_guard = issues;
+        }
+        Err(err) => {
+            eprintln!("failed to refresh issue cache: {err}");
+        }
+    }
+}
+
+async fn get_issues(
+    Query(filter): Query<IssueQuery>,
+    Extension(cache): Extension<IssueCache>,
+) -> Result<Json<IssuesResponse>, (StatusCode, Json<ApiError>)> {
+    let issues = cache.read().await.clone();
+    let issues = apply_filters(issues, &filter);
+    Ok(Json(wrap(issues)))
+}
+
+async fn get_issues_by_kind(
+    Path(kind): Path<String>,
+    Query(filter): Query<IssueQuery>,
+    Extension(cache): Extension<IssueCache>,
+) -> Result<Json<IssuesResponse>, (StatusCode, Json<ApiError>)> {
+    let issues = cache.read().await.clone();
+    let mut issues = apply_filters(issues, &filter);
+    issues.retain(|issue| issue.kind == kind);
+    Ok(Json(wrap(issues)))
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let pool = sqlx::SqlitePool::connect(&std::env::var("DATABASE_URL")?).await?;
 
     // Fast loop: node/peer/channel state, every 5s
+    let issue_cache: IssueCache = Arc::new(RwLock::new(Vec::new()));
+    refresh_issue_cache(&issue_cache, &pool).await;
+
     let fast_pool = pool.clone();
+    let issue_cache_clone = issue_cache.clone();
     let fast_handle = tokio::spawn(async move {
         let mut ticker = tokio::time::interval(std::time::Duration::from_secs(5));
         loop {
@@ -230,10 +438,33 @@ async fn main() -> anyhow::Result<()> {
                     for node in nodes {
                         poll_node(&node.id, &node.rpc_url, &fast_pool).await;
                     }
+                    refresh_issue_cache(&issue_cache_clone, &fast_pool).await;
                 }
                 Err(e) => eprintln!("failed to fetch monitored_nodes: {e}"),
             }
         }
+    });
+
+    let api_cache = issue_cache.clone();
+    let api_pool = pool.clone();
+    let app = Router::new()
+        .route("/issues", get(get_issues))
+        .route("/issues/{kind}", get(get_issues_by_kind))
+        .layer(Extension(api_cache))
+        .layer(Extension(api_pool))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(Any)
+                .allow_methods(Any)
+                .allow_headers(Any),
+        );
+    let api_addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let server_handle = tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind(api_addr)
+            .await
+            .expect("failed to bind API listener");
+        println!("API server listening on http://{api_addr}");
+        axum::serve(listener, app).await.expect("API server failed");
     });
 
     // Slow loop: graph data, every 30s
@@ -254,6 +485,16 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let _ = tokio::join!(fast_handle, slow_handle);
+    // Payment/invoice tracking loop, every 10s
+    let payment_pool = pool.clone();
+    let payment_handle = tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(10));
+        loop {
+            ticker.tick().await;
+            payment_tracker::poll_tracked_payments(&payment_pool).await;
+        }
+    });
+
+    let _ = tokio::join!(fast_handle, slow_handle, server_handle, payment_handle);
     Ok(())
 }
