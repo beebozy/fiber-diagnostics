@@ -15,7 +15,7 @@ Returns every currently-detected issue across all monitored nodes.
 
 | param | type | example | effect |
 |---|---|---|---|
-| `kind` | string | `?kind=NODE_DOWN` | exact match against `issue.kind` (case-sensitive, see Known Issues below) |
+| `kind` | string | `?kind=node-down` | exact match against `issue.kind`  |
 | `severity` | string | `?severity=critical` | case-insensitive match against `issue.severity` |
 
 **Response `200`:**
@@ -62,7 +62,7 @@ Same as `GET /issues`, pre-filtered to one `kind`. Equivalent to
 URLs. Same query params (`severity`) still apply on top of the path filter.
 
 ```
-GET /issues/NODE_DOWN
+GET /issues/node-down
 GET /issues/channel-not-ready?severity=warning
 ```
 
@@ -70,7 +70,7 @@ GET /issues/channel-not-ready?severity=warning
 
 | field | type | notes |
 |---|---|---|
-| `kind` | string | one of the 8 values below. **Casing is inconsistent right now** — see Known Issues. |
+| `kind` | string | one of the 8 values below. |
 | `severity` | string | one of `"Critical"`, `"Warning"`, `"Info"` (exact casing, PascalCase) |
 | `node_id` | string | which monitored node this issue belongs to |
 | `description` | string | human-readable, safe to display directly |
@@ -79,7 +79,7 @@ GET /issues/channel-not-ready?severity=warning
 
 | kind | category | confirmed with |
 |---|---|---|
-| `NODE_DOWN` | node unreachable via RPC | real data |
+| `node-down` | node unreachable via RPC | real data |
 | `channel-not-ready` | channel not in ChannelReady state, or disabled | real data |
 | `insufficient-balance` | channel local balance too low relative to remote | real data |
 | `invoice-expired` | invoice past expiry (by status or by timestamp) | real + synthetic |
@@ -90,20 +90,10 @@ GET /issues/channel-not-ready?severity=warning
 
 ## Known issues / things not yet fixed (as of today)
 
-- **`kind` casing is inconsistent** (`NODE_DOWN` vs `channel-not-ready`)
-  and matching is case-sensitive. Don't assume a normalized convention yet —
-  use the exact strings in the table above. This will likely change to a
-  single consistent casing in a future update; if/when it does, this doc
-  gets updated first.
 - **`peer-offline` can never fire right now.** The poller always writes
   `connected=1` and never sets it to `0` when a peer drops — a backend bug,
   not a frontend concern, but don't spend time debugging a "peer offline"
   UI against live data until this is fixed upstream.
-- **CORS is not yet configured** on the server. If you're running the
-  dashboard on a different origin/port (which you will be, in dev), browser
-  `fetch` calls to this API will currently be blocked. This needs a fix on
-  the backend before cross-origin requests will work — flag if you hit this
-  before it's resolved.
 - **`GET /issues/{unknown-kind}`** (a kind that doesn't exist) currently
   returns `200` with an empty `issues: []`, not a `404`. Don't treat an
   empty result as confirmation the kind string you used is correct — typos
