@@ -4,3 +4,7 @@ fiber-diagnostics.db
 *.db-wal
 # Cargo build output
 /target
+
+# Local test directories
+/testnet-fnn
+/scratch

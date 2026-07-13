@@ -1,0 +1,126 @@
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--sidebar-width);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+
+.logoContainer {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-md);
+  border-bottom: 1px solid var(--border-default);
+  gap: 10px;
+}
+
+.logoIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.logoText {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.nav {
+  flex: 1;
+  padding: var(--space-md) var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  padding: 8px var(--space-md);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  gap: 10px;
+  transition: all var(--transition-fast);
+}
+
+.navItem:hover:not(.disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.active {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.navIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+
+.navItem:hover .navIcon,
+.active .navIcon {
+  color: var(--text-primary);
+}
+
+.navLabel {
+  flex: 1;
+}
+
+.badge {
+  font-size: 9px;
+  font-weight: 500;
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+}
+
+.footer {
+  padding: var(--space-md);
+  border-top: 1px solid var(--border-default);
+}
+
+.versionContainer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-tertiary);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+}
+
+.versionLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.versionValue {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}

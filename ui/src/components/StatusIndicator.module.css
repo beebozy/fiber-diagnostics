@@ -1,0 +1,69 @@
+.container {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  background: var(--bg-secondary);
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  transition: all var(--transition-fast);
+}
+
+.dotContainer {
+  position: relative;
+  width: 6px;
+  height: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  z-index: 2;
+}
+
+.ring {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  z-index: 1;
+  animation: pulseRing 2s infinite cubic-bezier(0.215, 0.610, 0.355, 1);
+}
+
+.dotLive {
+  background-color: var(--severity-healthy);
+}
+
+.dotFixture {
+  background-color: var(--severity-warning);
+}
+
+.dotLoading {
+  background-color: var(--accent-blue);
+}
+
+.dotConnecting {
+  background-color: var(--text-tertiary);
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.labelLive {
+  color: var(--text-secondary);
+}
+
+.labelFixture {
+  color: var(--text-secondary);
+}
+
+.labelConnecting {
+  color: var(--text-tertiary);
+}
