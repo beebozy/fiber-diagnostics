@@ -1,0 +1,10 @@
+# SQLite DB files
+fiber-diagnostics.db
+*.db-shm
+*.db-wal
+# Cargo build output
+/target
+
+# Local test directories
+/testnet-fnn
+/scratch
