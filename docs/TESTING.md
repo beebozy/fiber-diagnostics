@@ -12,6 +12,7 @@ Two levels of testing, and they prove different things:
 
 ## Before you start
 
+- First run -- sqlite3 fiber-diagnostics.db < seed.sql
 - The API serves an **in-memory cache**, rebuilt from a full DB scan every
   ~5s (the fast poll loop). After changing the DB, **wait ~5s**, then curl.
 - An issue disappears from `/issues` only when you fix or delete the
@@ -348,12 +349,30 @@ curl -s -X POST http://127.0.0.1:8227 -H "Content-Type: application/json" \
 # note the payment_hash, register in tracked_payments same as above, wait, curl /issues/fee-too-low
 ```
 
-## 8. asset-mismatch (real) — BLOCKED, not just untested
+## 8. asset-mismatch (real) — Testable through hardcoding
 
-Don't spend time on this one yet. `payment_tracker.rs`'s `get_payment`
-handler never writes `asset_type` into `payment_status_current` — so even a
-genuine on-chain mismatch can't be captured by our own code right now. This
-needs a code fix (map whatever `get_payment` actually returns re: UDT/asset
-into that column) before real-node testing is possible here. Worth deciding
-if that's worth building before the deadline, or accepted as a known gap
-alongside `peer-offline`.
+```bash
+# Case A: native-CKB channel, invoice wants a UDT -> should flag
+sqlite3 fiber-diagnostics.db "INSERT OR REPLACE INTO channel_status_current
+  (node_id, channel_id, channel_outpoint, peer_pubkey, is_public, state_name, enabled,
+   local_balance_raw, remote_balance_raw, offered_tlc_balance_raw, received_tlc_balance_raw,
+   last_seen_at, updated_at)
+VALUES ('node1','test-channel-native','test-outpoint-native','test-peer',0,'ChannelReady',1,
+   '0x0','0x0','0x0','0x0','2026-07-11T00:00:00Z','2026-07-11T00:00:00Z');"
+
+sqlite3 fiber-diagnostics.db "INSERT OR REPLACE INTO payment_status_current
+  (payment_hash, node_id, status, router_json, observed_at, updated_at)
+VALUES ('test-payment-mismatch-a','node1','Success',
+  '[{\"nodes\":[{\"channel_outpoint\":\"test-outpoint-native\"}]}]',
+  '2026-07-11T00:00:00Z','2026-07-11T00:00:00Z');"
+
+sqlite3 fiber-diagnostics.db "INSERT OR REPLACE INTO invoice_status_current
+  (payment_hash, invoice_status, parsed_invoice_json, observed_at, updated_at)
+VALUES ('test-payment-mismatch-a','Open',
+  '{\"data\":{\"attrs\":[{\"udt_script\":\"0x550000001000000030000000310000001142755a044bf2ee358cba9f2da187ce928c91cd4dc8692ded0337efa677d21a0120000000878fcc6f1f08d48e87bb1c3b3d5083f23f8a39c5d5c764f253b55b998526439b\"}]}}',
+  '2026-07-11T00:00:00Z','2026-07-11T00:00:00Z');"
+
+  sleep 6
+  curl http://127.0.0.1:3000/issues/asset-mismatch
+  
+  ```

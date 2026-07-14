@@ -399,6 +399,7 @@ dependencies = [
  "anyhow",
  "axum",
  "chrono",
+ "dotenvy",
  "hyper 0.14.32",
  "reqwest",
  "serde",

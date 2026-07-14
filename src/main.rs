@@ -4,7 +4,7 @@ mod rpc_client;
 use axum::{
     extract::{Extension, Path, Query},
     http::StatusCode,
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use diagnostics::engine::DiagnosticsEngine;
@@ -162,6 +162,33 @@ async fn poll_node(node_id: &str, rpc_url: &str, pool: &sqlx::SqlitePool) {
     match &peers_result {
         Ok(result) => {
             if let Some(peers) = result["peers"].as_array() {
+                let seen_pubkeys: Vec<String> = peers
+                    .iter()
+                    .filter_map(|p| p["pubkey"].as_str().map(|s| s.to_string()))
+                    .collect();
+
+                // Mark any peer this node previously reported as connected,
+                // but that isn't in THIS round's list_peers response, as
+                // disconnected. Without this, connected never flips to 0.
+                if seen_pubkeys.is_empty() {
+                    let _ = sqlx::query(
+                        "UPDATE peer_status_current SET connected = 0, updated_at = ? WHERE node_id = ? AND connected = 1"
+                    )
+                    .bind(&now).bind(node_id)
+                    .execute(pool).await;
+                } else {
+                    let placeholders = seen_pubkeys.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                    let sql = format!(
+                        "UPDATE peer_status_current SET connected = 0, updated_at = ? \
+                         WHERE node_id = ? AND connected = 1 AND peer_pubkey NOT IN ({placeholders})"
+                    );
+                    let mut q = sqlx::query(&sql).bind(&now).bind(node_id);
+                    for pk in &seen_pubkeys {
+                        q = q.bind(pk);
+                    }
+                    let _ = q.execute(pool).await;
+                }
+
                 for peer in peers {
                     let _ = sqlx::query(
                         "INSERT INTO peer_status_current (node_id, peer_pubkey, address, connected, last_seen_at, updated_at)
@@ -399,6 +426,41 @@ async fn refresh_issue_cache(cache: &IssueCache, pool: &sqlx::SqlitePool) {
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct SendPaymentRequest {
+    node_id: String,
+    invoice: String,
+}
+
+#[derive(Debug, Serialize)]
+struct SendPaymentApiResponse {
+    payment_hash: String,
+}
+
+async fn post_send_payment(
+    Extension(pool): Extension<sqlx::SqlitePool>,
+    Json(req): Json<SendPaymentRequest>,
+) -> Result<Json<SendPaymentApiResponse>, (StatusCode, Json<ApiError>)> {
+    let rpc_url: Option<String> = sqlx::query_scalar("SELECT rpc_url FROM monitored_nodes WHERE id = ?")
+        .bind(&req.node_id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+
+    let rpc_url = rpc_url.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ApiError { error: format!("unknown node_id '{}'", req.node_id) }),
+        )
+    })?;
+
+    let payment_hash = payment_tracker::send_and_track(&pool, &req.node_id, &rpc_url, &req.invoice)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+
+    Ok(Json(SendPaymentApiResponse { payment_hash }))
+}
+
 async fn get_issues(
     Query(filter): Query<IssueQuery>,
     Extension(cache): Extension<IssueCache>,
@@ -421,6 +483,7 @@ async fn get_issues_by_kind(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
     let pool = sqlx::SqlitePool::connect(&std::env::var("DATABASE_URL")?).await?;
 
     // Fast loop: node/peer/channel state, every 5s
@@ -449,6 +512,7 @@ async fn main() -> anyhow::Result<()> {
     let api_pool = pool.clone();
     let app = Router::new()
         .route("/issues", get(get_issues))
+        .route("/payments", post(post_send_payment))
         .route("/issues/{kind}", get(get_issues_by_kind))
         .layer(Extension(api_cache))
         .layer(Extension(api_pool))

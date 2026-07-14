@@ -1,8 +1,14 @@
 use crate::diagnostics::issue::Issue;
 use crate::diagnostics::repository::DiagnosticsData;
 use crate::diagnostics::rules::{
-    asset_mismatch, channel_not_ready, fee_too_low, insufficient_balance, invoice_expired,
-    no_route, node_down, peer_offline,
+    asset_mismatch,
+    channel_not_ready,
+    fee_too_low,
+    invoice_expired,
+    insufficient_balance,
+    no_route,
+    node_down,
+    peer_offline,
 };
 
 pub struct DiagnosticsEngine;
@@ -53,7 +59,7 @@ impl DiagnosticsEngine {
             }
         }
 
-        issues.extend(asset_mismatch::evaluate(&data.payments, &data.invoices));
+        issues.extend(asset_mismatch::evaluate(&data.payments, &data.invoices, &data.channels));
 
         issues
     }

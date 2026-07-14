@@ -9,6 +9,39 @@
 
 use crate::rpc_client::FiberRpcClient;
 
+/// Sends a real payment via send_payment and immediately registers the
+/// resulting payment_hash in tracked_payments -- the next poll_tracked_payments
+/// cycle picks it up automatically. No manual sqlite3 INSERT needed anymore.
+pub async fn send_and_track(
+    pool: &sqlx::SqlitePool,
+    node_id: &str,
+    rpc_url: &str,
+    invoice: &str,
+) -> anyhow::Result<String> {
+    let client = FiberRpcClient::new(rpc_url);
+    let result = client.send_payment(invoice).await?;
+    let payment_hash = result["payment_hash"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("send_payment response missing payment_hash"))?
+        .to_string();
+
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO tracked_payments (payment_hash, node_id, invoice, tracking_status, created_at, updated_at)
+         VALUES (?, ?, ?, 'active', ?, ?)
+         ON CONFLICT(payment_hash) DO UPDATE SET tracking_status='active', updated_at=excluded.updated_at",
+    )
+    .bind(&payment_hash)
+    .bind(node_id)
+    .bind(invoice)
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+
+    Ok(payment_hash)
+}
+
 #[derive(sqlx::FromRow, Debug)]
 struct TrackedPayment {
     payment_hash: String,
@@ -44,7 +77,7 @@ async fn poll_one(client: &FiberRpcClient, node_id: &str, payment_hash: &str, po
     // --- get_payment -> payment_status_current ---
     match client.get_payment(payment_hash).await {
         Ok(result) => {
-            let router_json = result.get("router").map(|r| r.to_string());
+            let router_json = result.get("routers").map(|r| r.to_string());
             let _ = sqlx::query(
                 "INSERT INTO payment_status_current
                     (payment_hash, node_id, status, failed_error, fee_raw, router_json,
