@@ -58,6 +58,7 @@ logic itself.
 | Diagnostics & API | The ordered rule engine (8 categories), payment/invoice tracking, the axum REST API, response contract design |
 
 ### Runtime flow
+
 Fiber Nodes (node1, node2, ...)
         |
    JSON-RPC (FiberRpcClient)
@@ -85,6 +86,7 @@ Fiber Nodes (node1, node2, ...)
                  POST /payments (originate + auto-track)
                           |
                     Dashboard / CLI
+                    
 ### Key design decisions
 
 - **In-memory issue cache, not persisted issue history.** The API serves
@@ -155,7 +157,7 @@ How to RUn the APPlication
 
 ---
 
-## Current functionality
+## Current functionality 
 
 All 8 diagnostic categories are implemented. Status reflects actual
 testing performed, not aspiration:
@@ -202,10 +204,11 @@ testing performed, not aspiration:
 - **`fee-too-low`/`no-route` real-node proof** beyond synthetic data, and
   broader `max_fee_amount` support on `POST /payments`.
 
+**FRONTEND SETUP**
 
-UI section: 
 
-
- **Video link** — 
- **Hosted setup** — 
- **Screenshots** —  This screenshots consist of the UI and backend 
+ **Video link** : 
+ 
+ **Hosted setup** :
+ 
+ **Screenshots** : 
