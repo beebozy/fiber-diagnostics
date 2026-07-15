@@ -15,6 +15,14 @@ const nextConfig: NextConfig = {
         source: "/api/stats",
         destination: "http://127.0.0.1:3000/stats",
       },
+      {
+        source: "/api/nodes",
+        destination: "http://127.0.0.1:3000/nodes",
+      },
+      {
+        source: "/api/nodes/:id",
+        destination: "http://127.0.0.1:3000/nodes/:id",
+      },
     ];
   },
 };

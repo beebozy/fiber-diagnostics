@@ -4,7 +4,7 @@ mod rpc_client;
 use axum::{
     extract::{Extension, Path, Query},
     http::StatusCode,
-    routing::{get, post},
+    routing::{get, post, delete},
     Json, Router,
 };
 use diagnostics::engine::DiagnosticsEngine;
@@ -17,15 +17,17 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::{Any, CorsLayer};
 
-#[derive(sqlx::FromRow, Debug)]
+#[derive(sqlx::FromRow, Debug, serde::Serialize, serde::Deserialize, Clone)]
 struct MonitoredNode {
     id: String,
+    name: String,
     rpc_url: String,
+    enabled: bool,
 }
 
 async fn fetch_monitored_nodes(pool: &sqlx::SqlitePool) -> anyhow::Result<Vec<MonitoredNode>> {
     let nodes = sqlx::query_as::<_, MonitoredNode>(
-        "SELECT id, rpc_url FROM monitored_nodes WHERE enabled = 1",
+        "SELECT id, name, rpc_url, enabled FROM monitored_nodes WHERE enabled = 1",
     )
     .fetch_all(pool)
     .await?;
@@ -626,6 +628,73 @@ async fn get_stats(
     }))
 }
 
+async fn get_nodes(
+    Extension(pool): Extension<sqlx::SqlitePool>,
+) -> Result<Json<Vec<MonitoredNode>>, (StatusCode, Json<ApiError>)> {
+    let nodes = sqlx::query_as::<_, MonitoredNode>(
+        "SELECT id, name, rpc_url, enabled FROM monitored_nodes"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+
+    Ok(Json(nodes))
+}
+
+#[derive(Deserialize)]
+struct CreateNodeRequest {
+    id: String,
+    name: String,
+    rpc_url: String,
+}
+
+async fn post_node(
+    Extension(pool): Extension<sqlx::SqlitePool>,
+    Json(req): Json<CreateNodeRequest>,
+) -> Result<Json<MonitoredNode>, (StatusCode, Json<ApiError>)> {
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO monitored_nodes (id, name, rpc_url, enabled, created_at, updated_at)
+         VALUES (?, ?, ?, 1, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+            name=excluded.name, rpc_url=excluded.rpc_url, enabled=1, updated_at=excluded.updated_at"
+    )
+    .bind(&req.id)
+    .bind(&req.name)
+    .bind(&req.rpc_url)
+    .bind(&now)
+    .bind(&now)
+    .execute(&pool)
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+
+    Ok(Json(MonitoredNode {
+        id: req.id,
+        name: req.name,
+        rpc_url: req.rpc_url,
+        enabled: true,
+    }))
+}
+
+async fn delete_node(
+    Path(id): Path<String>,
+    Extension(pool): Extension<sqlx::SqlitePool>,
+) -> Result<StatusCode, (StatusCode, Json<ApiError>)> {
+    let _ = sqlx::query("DELETE FROM node_status_current WHERE node_id = ?").bind(&id).execute(&pool).await;
+    let _ = sqlx::query("DELETE FROM peer_status_current WHERE node_id = ?").bind(&id).execute(&pool).await;
+    let _ = sqlx::query("DELETE FROM channel_status_current WHERE node_id = ?").bind(&id).execute(&pool).await;
+    let _ = sqlx::query("DELETE FROM tracked_payments WHERE node_id = ?").bind(&id).execute(&pool).await;
+
+    sqlx::query("DELETE FROM monitored_nodes WHERE id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
@@ -660,6 +729,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/payments", post(post_send_payment))
         .route("/issues/{kind}", get(get_issues_by_kind))
         .route("/stats", get(get_stats))
+        .route("/nodes", get(get_nodes).post(post_node))
+        .route("/nodes/{id}", delete(delete_node))
         .layer(Extension(api_cache))
         .layer(Extension(api_pool))
         .layer(

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { IssuesResponse, NetworkStats } from "./types";
+import { IssuesResponse, NetworkStats, MonitoredNode } from "./types";
 import { FIXTURE_RESPONSE, FIXTURE_STATS } from "./fixtures";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
@@ -135,3 +135,48 @@ export function useStats() {
 
   return { data, loading, error, isUsingFixtures };
 }
+
+const MOCK_NODES: MonitoredNode[] = [
+  { id: "node1", name: "Local Node A", rpc_url: "http://127.0.0.1:8227", enabled: true },
+  { id: "node2", name: "Local Node B", rpc_url: "http://127.0.0.1:8237", enabled: true },
+];
+
+export async function fetchNodes(): Promise<MonitoredNode[]> {
+  const url = `${API_BASE}/api/nodes`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch nodes: ${res.statusText}`);
+    }
+    return await res.json();
+  } catch (err) {
+    console.warn("API unavailable, falling back to mock nodes:", err);
+    return MOCK_NODES;
+  }
+}
+
+export async function addNode(id: string, name: string, rpc_url: string): Promise<MonitoredNode> {
+  const url = `${API_BASE}/api/nodes`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, name, rpc_url }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to add node: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function deleteNode(id: string): Promise<void> {
+  const url = `${API_BASE}/api/nodes/${id}`;
+  const res = await fetch(url, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `Failed to delete node: ${res.statusText}`);
+  }
+}
+

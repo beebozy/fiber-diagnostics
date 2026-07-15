@@ -55,3 +55,11 @@ export interface NetworkStats {
   active_issues: number;
 }
 
+export interface MonitoredNode {
+  id: string;
+  name: string;
+  rpc_url: string;
+  enabled: boolean;
+}
+
+
