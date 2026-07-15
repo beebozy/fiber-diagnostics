@@ -58,7 +58,6 @@ logic itself.
 | Diagnostics & API | The ordered rule engine (8 categories), payment/invoice tracking, the axum REST API, response contract design |
 
 ### Runtime flow
-
 Fiber Nodes (node1, node2, ...)
         |
    JSON-RPC (FiberRpcClient)
@@ -86,8 +85,6 @@ Fiber Nodes (node1, node2, ...)
                  POST /payments (originate + auto-track)
                           |
                     Dashboard / CLI
-```
-
 ### Key design decisions
 
 - **In-memory issue cache, not persisted issue history.** The API serves
