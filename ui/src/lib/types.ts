@@ -42,3 +42,16 @@ export const SEVERITY_ORDER: Record<Severity, number> = {
   Warning: 1,
   Info: 2,
 };
+
+export interface NetworkStats {
+  generated_at: string;
+  graph_nodes: number;
+  graph_channels: number;
+  monitored_nodes: number;
+  nodes_online: number;
+  nodes_offline: number;
+  total_peers: number;
+  total_channels: number;
+  active_issues: number;
+}
+

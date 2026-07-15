@@ -296,6 +296,7 @@ async fn poll_node(node_id: &str, rpc_url: &str, pool: &sqlx::SqlitePool) {
 }
 
 async fn poll_graph(client: &FiberRpcClient, pool: &sqlx::SqlitePool) {
+    let now = chrono::Utc::now().to_rfc3339();
     let started = chrono::Utc::now().to_rfc3339();
     let result = client.graph_nodes().await;
     let finished = chrono::Utc::now().to_rfc3339();
@@ -332,6 +333,42 @@ async fn poll_graph(client: &FiberRpcClient, pool: &sqlx::SqlitePool) {
     if let Ok(r) = result {
         if let Some(nodes) = r["nodes"].as_array() {
             println!("graph_nodes OK — {} known nodes", nodes.len());
+            for node in nodes {
+                if let Some(pubkey) = node["pubkey"].as_str() {
+                    let node_name = node["node_name"].as_str();
+                    let addresses_json = node["addresses"].to_string();
+                    let chain_hash = node["chain_hash"].as_str();
+                    let auto_accept_min_ckb_funding_amount_raw = node["auto_accept_min_ckb_funding_amount"].as_str();
+                    let udt_cfg_infos_json = node["udt_cfg_infos"].to_string();
+                    let timestamp_raw = node["timestamp"].as_str();
+
+                    let _ = sqlx::query(
+                        "INSERT INTO graph_node_current
+                            (pubkey, node_name, addresses_json, chain_hash,
+                             auto_accept_min_ckb_funding_amount_raw, udt_cfg_infos_json,
+                             timestamp_raw, observed_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         ON CONFLICT(pubkey) DO UPDATE SET
+                            node_name=excluded.node_name, addresses_json=excluded.addresses_json,
+                            chain_hash=excluded.chain_hash,
+                            auto_accept_min_ckb_funding_amount_raw=excluded.auto_accept_min_ckb_funding_amount_raw,
+                            udt_cfg_infos_json=excluded.udt_cfg_infos_json,
+                            timestamp_raw=excluded.timestamp_raw,
+                            observed_at=excluded.observed_at, updated_at=excluded.updated_at"
+                    )
+                    .bind(pubkey)
+                    .bind(node_name)
+                    .bind(addresses_json)
+                    .bind(chain_hash)
+                    .bind(auto_accept_min_ckb_funding_amount_raw)
+                    .bind(udt_cfg_infos_json)
+                    .bind(timestamp_raw)
+                    .bind(&now)
+                    .bind(&now)
+                    .execute(pool)
+                    .await;
+                }
+            }
         }
     }
 
@@ -371,6 +408,47 @@ async fn poll_graph(client: &FiberRpcClient, pool: &sqlx::SqlitePool) {
     if let Ok(r) = result {
         if let Some(channels) = r["channels"].as_array() {
             println!("graph_channels OK — {} known channels", channels.len());
+            for ch in channels {
+                if let Some(outpoint) = ch["channel_outpoint"].as_str() {
+                    let node1_pubkey = ch["node1"].as_str().unwrap_or("");
+                    let node2_pubkey = ch["node2"].as_str().unwrap_or("");
+                    let capacity_raw = ch["capacity"].as_str();
+                    let chain_hash = ch["chain_hash"].as_str();
+                    let udt_type_script_json = ch["udt_type_script"].to_string();
+                    let created_timestamp_raw = ch["created_timestamp"].as_str();
+                    let update_info_node1_json = ch["update_info_of_node1"].to_string();
+                    let update_info_node2_json = ch["update_info_of_node2"].to_string();
+
+                    let _ = sqlx::query(
+                        "INSERT INTO graph_channel_current
+                            (channel_outpoint, node1_pubkey, node2_pubkey, capacity_raw,
+                             chain_hash, udt_type_script_json, created_timestamp_raw,
+                             update_info_node1_json, update_info_node2_json, observed_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         ON CONFLICT(channel_outpoint) DO UPDATE SET
+                            node1_pubkey=excluded.node1_pubkey, node2_pubkey=excluded.node2_pubkey,
+                            capacity_raw=excluded.capacity_raw, chain_hash=excluded.chain_hash,
+                            udt_type_script_json=excluded.udt_type_script_json,
+                            created_timestamp_raw=excluded.created_timestamp_raw,
+                            update_info_node1_json=excluded.update_info_node1_json,
+                            update_info_node2_json=excluded.update_info_node2_json,
+                            observed_at=excluded.observed_at, updated_at=excluded.updated_at"
+                    )
+                    .bind(outpoint)
+                    .bind(node1_pubkey)
+                    .bind(node2_pubkey)
+                    .bind(capacity_raw)
+                    .bind(chain_hash)
+                    .bind(udt_type_script_json)
+                    .bind(created_timestamp_raw)
+                    .bind(update_info_node1_json)
+                    .bind(update_info_node2_json)
+                    .bind(&now)
+                    .bind(&now)
+                    .execute(pool)
+                    .await;
+                }
+            }
         }
     }
 }
@@ -481,6 +559,73 @@ async fn get_issues_by_kind(
     Ok(Json(wrap(issues)))
 }
 
+#[derive(Debug, Serialize)]
+struct NetworkStats {
+    generated_at: String,
+    graph_nodes: i64,
+    graph_channels: i64,
+    monitored_nodes: i64,
+    nodes_online: i64,
+    nodes_offline: i64,
+    total_peers: i64,
+    total_channels: i64,
+    active_issues: usize,
+}
+
+async fn get_stats(
+    Extension(pool): Extension<sqlx::SqlitePool>,
+    Extension(cache): Extension<IssueCache>,
+) -> Result<Json<NetworkStats>, (StatusCode, Json<ApiError>)> {
+    let graph_nodes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_node_current")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+
+    let graph_channels: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_channel_current")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+
+    let monitored_nodes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM monitored_nodes WHERE enabled = 1")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+
+    let nodes_online: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_status_current WHERE rpc_reachable = 1")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+
+    let nodes_offline: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_status_current WHERE rpc_reachable = 0")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+
+    let total_peers: i64 = sqlx::query_scalar("SELECT COUNT(DISTINCT peer_pubkey) FROM peer_status_current WHERE connected = 1")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+
+    let total_channels: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM channel_status_current")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+
+    let active_issues = cache.read().await.len();
+
+    Ok(Json(NetworkStats {
+        generated_at: chrono::Utc::now().to_rfc3339(),
+        graph_nodes,
+        graph_channels,
+        monitored_nodes,
+        nodes_online,
+        nodes_offline,
+        total_peers,
+        total_channels,
+        active_issues,
+    }))
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
@@ -514,6 +659,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/issues", get(get_issues))
         .route("/payments", post(post_send_payment))
         .route("/issues/{kind}", get(get_issues_by_kind))
+        .route("/stats", get(get_stats))
         .layer(Extension(api_cache))
         .layer(Extension(api_pool))
         .layer(

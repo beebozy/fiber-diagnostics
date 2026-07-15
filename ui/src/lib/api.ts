@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { IssuesResponse } from "./types";
-import { FIXTURE_RESPONSE } from "./fixtures";
+import { IssuesResponse, NetworkStats } from "./types";
+import { FIXTURE_RESPONSE, FIXTURE_STATS } from "./fixtures";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -82,4 +82,56 @@ export function useIssues(kind?: string, severity?: string) {
   }, [kind, severity]);
 
   return { data, loading, error, lastUpdated, isUsingFixtures };
+}
+
+export async function fetchStats(): Promise<NetworkStats> {
+  const url = `${API_BASE}/api/stats`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch stats: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export function useStats() {
+  const [data, setData] = useState<NetworkStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isUsingFixtures, setIsUsingFixtures] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadData() {
+      try {
+        const statsData = await fetchStats();
+        if (active) {
+          setData(statsData);
+          setError(null);
+          setIsUsingFixtures(false);
+          setLoading(false);
+        }
+      } catch (err: any) {
+        if (active) {
+          setData({
+            ...FIXTURE_STATS,
+            generated_at: new Date().toISOString(),
+          });
+          setError(null);
+          setIsUsingFixtures(true);
+          setLoading(false);
+        }
+      }
+    }
+
+    loadData();
+    const interval = setInterval(loadData, 5000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  return { data, loading, error, isUsingFixtures };
 }

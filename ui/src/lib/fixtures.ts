@@ -54,3 +54,16 @@ export const FIXTURE_RESPONSE: IssuesResponse = {
     },
   ],
 };
+
+export const FIXTURE_STATS = {
+  generated_at: new Date().toISOString(),
+  graph_nodes: 64,
+  graph_channels: 500,
+  monitored_nodes: 3,
+  nodes_online: 2,
+  nodes_offline: 1,
+  total_peers: 8,
+  total_channels: 12,
+  active_issues: 8,
+};
+

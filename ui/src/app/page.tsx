@@ -4,6 +4,7 @@ import { useIssues } from "@/lib/api";
 import Header from "@/components/Header";
 import StatusIndicator from "@/components/StatusIndicator";
 import StatsBar from "@/components/StatsBar";
+import NetworkStats from "@/components/NetworkStats";
 import IssuesList from "@/components/IssuesList";
 import styles from "./page.module.css";
 
@@ -55,6 +56,9 @@ export default function Home() {
             <>
               {/* Stat Summary Metrics */}
               <StatsBar issues={data.issues} />
+
+              {/* Live Network Stats (Graph, Peers, Channels) */}
+              <NetworkStats />
 
               {/* Filterable Issues Alert List */}
               <IssuesList issues={data.issues} />
