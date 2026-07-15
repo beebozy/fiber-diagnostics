@@ -57,7 +57,7 @@ export default function Sidebar() {
   const navItems = [
     { label: "Dashboard", href: "/", icon: <IconDashboard /> },
     { label: "Issues", href: "#", icon: <IconAlerts />, disabled: true },
-    { label: "Nodes", href: "#", icon: <IconNodes />, disabled: true },
+    { label: "Nodes", href: "/nodes", icon: <IconNodes /> },
   ];
 
   return (
