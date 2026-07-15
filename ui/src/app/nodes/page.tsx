@@ -55,8 +55,7 @@ export default function NodesPage() {
     loadNodes();
   }, []);
 
-  async function handleAddNode(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleAddNode() {
     if (!nodeId.trim() || !nodeName.trim() || !rpcUrl.trim()) {
       setFormError("All fields are required.");
       return;
@@ -142,7 +141,7 @@ export default function NodesPage() {
         <div className={styles.formSection}>
           <h3 className={styles.sectionTitle}>Register New Node</h3>
           
-          <form onSubmit={handleAddNode} className={styles.form}>
+          <div className={styles.form}>
             {formError && <div className={styles.formErrorBanner}>{formError}</div>}
             
             <div className={styles.field}>
@@ -188,14 +187,15 @@ export default function NodesPage() {
             </div>
 
             <button
-              type="submit"
+              type="button"
+              onClick={handleAddNode}
               className={styles.submitButton}
               disabled={submitting}
             >
               <span className={styles.plusIcon}><IconPlus /></span>
               {submitting ? "Registering..." : "Add Monitored Node"}
             </button>
-          </form>
+          </div>
         </div>
       </div>
     </div>
