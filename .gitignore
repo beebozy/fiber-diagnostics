@@ -8,3 +8,5 @@ fiber-diagnostics.db
 # Local test directories
 /testnet-fnn
 /scratch
+
+.env
