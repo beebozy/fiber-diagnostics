@@ -10,16 +10,12 @@ Option<String>`), not structured error codes — there's no enum to switch
 on for "why did this fail." This project turns that into a rule-based
 classifier backed by real polled state, not guesswork.
 
----
-
 ## Submission category
 
 **Category 2: Node, Routing, Cross-Chain, and Diagnostics Infrastructure**
 
----
 
 ## Project overview
-
 fiber-diagnostics is an infrastructure tool for FNN node operators. It
 continuously polls one or more Fiber nodes over RPC, persists their state
 (node reachability, peers, channels, in-flight payments, invoices) to
@@ -33,7 +29,6 @@ of Fiber who need to know *why* a payment, channel, or peer connection is
 failing, without reading verbose `RUST_LOG=info` output or making a dozen
 manual RPC calls per incident.
 
----
 
 ## What problem does it solve?
 
@@ -52,7 +47,6 @@ concrete, categorized issues exposed over a REST API — the foundation a
 dashboard or CLI can build on without re-implementing any diagnostic
 logic itself.
 
----
 
 ## System design
 
@@ -65,7 +59,6 @@ logic itself.
 
 ### Runtime flow
 
-```
 Fiber Nodes (node1, node2, ...)
         |
    JSON-RPC (FiberRpcClient)
@@ -144,7 +137,7 @@ See [`docs/API.md`](docs/API.md) for the full endpoint contract and
 [`docs/TESTING.md`](docs/TESTING.md) for a rule-by-rule testing runbook
 (both synthetic and real-node testing procedures).
 
----
+How to RUn the APPlication 
 
 ## Tooling
 
@@ -212,17 +205,10 @@ testing performed, not aspiration:
 - **`fee-too-low`/`no-route` real-node proof** beyond synthetic data, and
   broader `max_fee_amount` support on `POST /payments`.
 
----
 
-## Submission checklist (fill in before submitting)
+UI section: 
 
-- [ ] **Github link** — repository must be public with an open-source
-  license (MIT recommended — add a `LICENSE` file if not already present)
-- [ ] **Video link** — demo covering: a real node going down and the
-  issue appearing/clearing, a channel-readiness or balance issue against
-  real data, and `POST /payments` originating a real tracked payment
-- [ ] **Hosted setup** — deploy to a VPS (e.g. a DigitalOcean Droplet,
-  reimbursable up to $4 per the hackathon terms) running both `fnn` and
-  this backend; must stay live for judges after the hackathon ends
-- [ ] **Screenshots** — `curl` output or dashboard screenshots showing at
-  least a few of the 8 issue categories firing against real data
+
+ **Video link** — 
+ **Hosted setup** — 
+ **Screenshots** —  This screenshots consist of the UI and backend 
