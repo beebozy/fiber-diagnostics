@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import { Issue } from "../lib/types";
+import { Issue, NetworkStats } from "../lib/types";
 import styles from "./StatsBar.module.css";
 
 interface StatsBarProps {
   issues: Issue[];
+  stats?: NetworkStats | null;
 }
 
 function IconActivity() {
@@ -45,45 +46,55 @@ function IconCheckCircle() {
   );
 }
 
-export default function StatsBar({ issues }: StatsBarProps) {
-  const stats = useMemo(() => {
+export default function StatsBar({ issues, stats }: StatsBarProps) {
+  const calculatedStats = useMemo(() => {
     const total = issues.length;
     const critical = issues.filter((i) => i.severity === "Critical").length;
     const warning = issues.filter((i) => i.severity === "Warning").length;
-    const allNodeIds = new Set(issues.map((i) => i.node_id));
-    const downNodeIds = new Set(
-      issues.filter((i) => i.kind === "node-down").map((i) => i.node_id)
-    );
-    const totalMonitored = Math.max(allNodeIds.size, 1);
-    const healthy = totalMonitored - downNodeIds.size;
+
+    let totalMonitored = 0;
+    let healthy = 0;
+
+    if (stats) {
+      totalMonitored = stats.monitored_nodes;
+      healthy = stats.nodes_online;
+    } else {
+      const allNodeIds = new Set(issues.map((i) => i.node_id));
+      const downNodeIds = new Set(
+        issues.filter((i) => i.kind === "node-down").map((i) => i.node_id)
+      );
+      totalMonitored = Math.max(allNodeIds.size, 1);
+      healthy = totalMonitored - downNodeIds.size;
+    }
+
     return { total, critical, warning, healthy, totalMonitored };
-  }, [issues]);
+  }, [issues, stats]);
 
   const cards = [
     {
       label: "Total Issues",
-      value: stats.total,
+      value: calculatedStats.total,
       icon: <IconActivity />,
       colorClass: styles.blue,
       desc: "Active diagnostics alerts",
     },
     {
       label: "Critical",
-      value: stats.critical,
+      value: calculatedStats.critical,
       icon: <IconAlertCircle />,
       colorClass: styles.red,
       desc: "Requires immediate action",
     },
     {
       label: "Warnings",
-      value: stats.warning,
+      value: calculatedStats.warning,
       icon: <IconAlertTriangle />,
       colorClass: styles.amber,
       desc: "Performance degradation risks",
     },
     {
       label: "Healthy Nodes",
-      value: `${stats.healthy}/${stats.totalMonitored}`,
+      value: `${calculatedStats.healthy}/${calculatedStats.totalMonitored}`,
       icon: <IconCheckCircle />,
       colorClass: styles.green,
       desc: "Reachability check status",

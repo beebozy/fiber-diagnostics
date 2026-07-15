@@ -1,6 +1,6 @@
 "use client";
 
-import { useIssues } from "@/lib/api";
+import { useIssues, useStats } from "@/lib/api";
 import Header from "@/components/Header";
 import StatusIndicator from "@/components/StatusIndicator";
 import StatsBar from "@/components/StatsBar";
@@ -10,6 +10,7 @@ import styles from "./page.module.css";
 
 export default function Home() {
   const { data, loading, error, lastUpdated, isUsingFixtures } = useIssues();
+  const { data: statsData } = useStats();
 
   return (
     <div className={styles.wrapper}>
@@ -55,7 +56,7 @@ export default function Home() {
           {data && (
             <>
               {/* Stat Summary Metrics */}
-              <StatsBar issues={data.issues} />
+              <StatsBar issues={data.issues} stats={statsData} />
 
               {/* Live Network Stats (Graph, Peers, Channels) */}
               <NetworkStats />
