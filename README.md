@@ -2,7 +2,7 @@
 
 A diagnostics backend for the CKB Fiber Network (FNN) — polls live Fiber nodes, classifies failures across 8 categories (node, peer, channel, liquidity, invoice, routing, fee/policy, and asset-mismatch conditions), and exposes them as a clean JSON API for a dashboard to consume.
 
-FNN's `get_payment` RPC returns failures as free-text (`failed_error: Option<String>`), not structured error codes — there's no enum to switch on for "why did this fail." This project turns that into a rule-based classifier backed by real polled state, not guesswork.
+FNN's `get_payment` RPC returns failures as free-text (`failed_error: Option<String>`), not structured error codes — there's no enum to switch on for "why did this fail." This project turns that into a rule-based classifier backed by real polled state.
 
 **Submission category:** Category 2 — Node, Routing, Cross-Chain, and Diagnostics Infrastructure
 
