@@ -9,4 +9,4 @@ fiber-diagnostics.db
 /testnet-fnn
 /scratch
 
-.env
+*.env
