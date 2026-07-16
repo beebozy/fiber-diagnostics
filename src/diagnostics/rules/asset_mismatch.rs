@@ -1,4 +1,4 @@
-//! Category 6: Asset Mismatch -- compares the UDT the invoice requires
+//! Category 8: Asset Mismatch -- compares the UDT the invoice requires
 //! against the UDT actually funding the channel the payment was routed
 //! over.
 //!
