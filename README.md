@@ -334,11 +334,11 @@ This project intentionally does not depend on an external Fiber SDK.
 
 ---
 
-## Quick Start
+## Quick Start 
 
 **Prerequisites:** Rust installed, SQLite available locally, one or more
 running `fnn` nodes.
-
+Link to running the fnn node [https://www.fiber.world/docs/quick-start/basic-transfer](url)
 **Run locally:**
 ```bash
 export DATABASE_URL="sqlite://fiber-diagnostics.db"
@@ -361,8 +361,18 @@ code changes are required.
 Instead of the above, run this:
 ```bash
 sqlite3 fiber-diagnostics.db < seed.sql
+
 ```
----
+
+Open another terminal and navigate to the UI directory 
+
+and run the command 
+
+npm run dev in a new terminal 
+
+please refer to the below for further testing 
+
+**PLEASE TO TEST THE DIAGNOSTICS** - [`docs/TESTING.md`](docs/TESTING.md) — rule-by-rule testing guide
 
 ## API Overview
 
