@@ -3,8 +3,7 @@
   [![Rust](https://img.shields.io/badge/Rust-2021-orange.svg)](#tech-stack)
   [![Axum](https://img.shields.io/badge/API-Axum-000000.svg)](#api-overview)
   [![SQLite](https://img.shields.io/badge/DB-SQLite-07405E.svg)](#tech-stack)
-  [![Status](https://img.shields.io/badge/status-functional-success.svg)](#statu
-  s)
+  ![Status](https://img.shields.io/badge/status-functional-success.svg)
 
   A diagnostics backend for the **CKB Fiber Network (FNN)** that polls live
   Fiber nodes, classifies failures across **8 diagnostic categories**, and
@@ -24,7 +23,6 @@
   - **Video walkthrough:**
   https://www.loom.com/share/9c01c9fb878942dd81f53a83721fb2b8
   - **Hosted deployment:** Not yet available
-  - **API docs:** `docs/API.md`
   - **Testing guide:** `docs/TESTING.md`
 
   ---
@@ -618,7 +616,6 @@
   ---
   Documentation
   
-  - docs/API.md — full API contract
   - docs/TESTING.md — rule-by-rule testing guide
 
   ---
