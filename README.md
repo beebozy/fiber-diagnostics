@@ -374,7 +374,6 @@ dashboards, frontends, and external tooling.
 Every response includes `generated_at` and `count`. The API also returns
 structured JSON error responses for failure cases.
 
-For the full request/response contract, see [`docs/API.md`](docs/API.md).
 
 ---
 
@@ -473,7 +472,6 @@ observability features in future iterations.
 
 ## Documentation
 
-- [`docs/API.md`](docs/API.md) — full API request/response contract
 - [`docs/TESTING.md`](docs/TESTING.md) — rule-by-rule testing guide
 
 ---
