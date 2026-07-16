@@ -50,15 +50,18 @@ struct TrackedPayment {
 
 /// node_id -> rpc_url, so each tracked payment can be polled against the
 /// right node's client.
-async fn load_node_urls(pool: &sqlx::SqlitePool) -> anyhow::Result<std::collections::HashMap<String, String>> {
+async fn load_node_urls(
+    pool: &sqlx::SqlitePool,
+) -> anyhow::Result<std::collections::HashMap<String, String>> {
     #[derive(sqlx::FromRow)]
     struct NodeUrl {
         id: String,
         rpc_url: String,
     }
-    let rows = sqlx::query_as::<_, NodeUrl>("SELECT id, rpc_url FROM monitored_nodes WHERE enabled = 1")
-        .fetch_all(pool)
-        .await?;
+    let rows =
+        sqlx::query_as::<_, NodeUrl>("SELECT id, rpc_url FROM monitored_nodes WHERE enabled = 1")
+            .fetch_all(pool)
+            .await?;
     Ok(rows.into_iter().map(|r| (r.id, r.rpc_url)).collect())
 }
 
@@ -71,7 +74,12 @@ async fn load_tracked_payments(pool: &sqlx::SqlitePool) -> anyhow::Result<Vec<Tr
     Ok(rows)
 }
 
-async fn poll_one(client: &FiberRpcClient, node_id: &str, payment_hash: &str, pool: &sqlx::SqlitePool) {
+async fn poll_one(
+    client: &FiberRpcClient,
+    node_id: &str,
+    payment_hash: &str,
+    pool: &sqlx::SqlitePool,
+) {
     let now = chrono::Utc::now().to_rfc3339();
 
     // --- get_payment -> payment_status_current ---
@@ -101,7 +109,10 @@ async fn poll_one(client: &FiberRpcClient, node_id: &str, payment_hash: &str, po
             .bind(&now)
             .execute(pool)
             .await;
-            println!("[{node_id}] get_payment {payment_hash} -> {:?}", result["status"].as_str());
+            println!(
+                "[{node_id}] get_payment {payment_hash} -> {:?}",
+                result["status"].as_str()
+            );
         }
         Err(e) => eprintln!("[{node_id}] get_payment {payment_hash} failed: {e}"),
     }
@@ -131,7 +142,10 @@ async fn poll_one(client: &FiberRpcClient, node_id: &str, payment_hash: &str, po
             .bind(&now)
             .execute(pool)
             .await;
-            println!("[{node_id}] get_invoice {payment_hash} -> {:?}", result["status"].as_str());
+            println!(
+                "[{node_id}] get_invoice {payment_hash} -> {:?}",
+                result["status"].as_str()
+            );
         }
         Err(e) => eprintln!("[{node_id}] get_invoice {payment_hash} failed: {e}"),
     }

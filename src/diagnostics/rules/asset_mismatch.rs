@@ -16,7 +16,9 @@ use crate::diagnostics::repository::{ChannelStatus, InvoiceStatus, PaymentStatus
 use std::collections::HashMap;
 
 fn read_u32_le(bytes: &[u8], offset: usize) -> Option<u32> {
-    bytes.get(offset..offset + 4).map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+    bytes
+        .get(offset..offset + 4)
+        .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
 }
 
 fn hex_decode(s: &str) -> Option<Vec<u8>> {
@@ -24,7 +26,10 @@ fn hex_decode(s: &str) -> Option<Vec<u8>> {
     if s.len() % 2 != 0 {
         return None;
     }
-    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok()).collect()
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+        .collect()
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
@@ -94,7 +99,11 @@ fn extract_invoice_udt(parsed_invoice_json: &str) -> Option<serde_json::Value> {
     None
 }
 
-pub fn evaluate(payments: &[PaymentStatus], invoices: &[InvoiceStatus], channels: &[ChannelStatus]) -> Vec<Issue> {
+pub fn evaluate(
+    payments: &[PaymentStatus],
+    invoices: &[InvoiceStatus],
+    channels: &[ChannelStatus],
+) -> Vec<Issue> {
     let invoice_map: HashMap<&str, &InvoiceStatus> = invoices
         .iter()
         .map(|invoice| (invoice.payment_hash.as_str(), invoice))
@@ -108,13 +117,25 @@ pub fn evaluate(payments: &[PaymentStatus], invoices: &[InvoiceStatus], channels
     let mut issues = Vec::new();
 
     for payment in payments {
-        let Some(invoice) = invoice_map.get(payment.payment_hash.as_str()) else { continue };
-        let Some(parsed_invoice_json) = &invoice.parsed_invoice_json else { continue };
-        let Some(invoice_udt) = extract_invoice_udt(parsed_invoice_json) else { continue };
+        let Some(invoice) = invoice_map.get(payment.payment_hash.as_str()) else {
+            continue;
+        };
+        let Some(parsed_invoice_json) = &invoice.parsed_invoice_json else {
+            continue;
+        };
+        let Some(invoice_udt) = extract_invoice_udt(parsed_invoice_json) else {
+            continue;
+        };
 
-        let Some(router_json) = &payment.router_json else { continue };
-        let Some(outpoint) = first_hop_channel_outpoint(router_json) else { continue };
-        let Some(channel) = channel_by_outpoint.get(outpoint.as_str()) else { continue };
+        let Some(router_json) = &payment.router_json else {
+            continue;
+        };
+        let Some(outpoint) = first_hop_channel_outpoint(router_json) else {
+            continue;
+        };
+        let Some(channel) = channel_by_outpoint.get(outpoint.as_str()) else {
+            continue;
+        };
 
         match &channel.funding_udt_type_script_json {
             None => {
@@ -129,7 +150,8 @@ pub fn evaluate(payments: &[PaymentStatus], invoices: &[InvoiceStatus], channels
                 });
             }
             Some(channel_udt_json) => {
-                let channel_udt: Option<serde_json::Value> = serde_json::from_str(channel_udt_json).ok();
+                let channel_udt: Option<serde_json::Value> =
+                    serde_json::from_str(channel_udt_json).ok();
                 if channel_udt.as_ref() != Some(&invoice_udt) {
                     issues.push(Issue {
                         kind: "asset-mismatch".into(),

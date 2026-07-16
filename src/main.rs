@@ -4,7 +4,7 @@ mod rpc_client;
 use axum::{
     extract::{Extension, Path, Query},
     http::StatusCode,
-    routing::{get, post, delete},
+    routing::{delete, get, post},
     Json, Router,
 };
 use diagnostics::engine::DiagnosticsEngine;
@@ -179,7 +179,11 @@ async fn poll_node(node_id: &str, rpc_url: &str, pool: &sqlx::SqlitePool) {
                     .bind(&now).bind(node_id)
                     .execute(pool).await;
                 } else {
-                    let placeholders = seen_pubkeys.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                    let placeholders = seen_pubkeys
+                        .iter()
+                        .map(|_| "?")
+                        .collect::<Vec<_>>()
+                        .join(",");
                     let sql = format!(
                         "UPDATE peer_status_current SET connected = 0, updated_at = ? \
                          WHERE node_id = ? AND connected = 1 AND peer_pubkey NOT IN ({placeholders})"
@@ -340,7 +344,8 @@ async fn poll_graph(client: &FiberRpcClient, pool: &sqlx::SqlitePool) {
                     let node_name = node["node_name"].as_str();
                     let addresses_json = node["addresses"].to_string();
                     let chain_hash = node["chain_hash"].as_str();
-                    let auto_accept_min_ckb_funding_amount_raw = node["auto_accept_min_ckb_funding_amount"].as_str();
+                    let auto_accept_min_ckb_funding_amount_raw =
+                        node["auto_accept_min_ckb_funding_amount"].as_str();
                     let udt_cfg_infos_json = node["udt_cfg_infos"].to_string();
                     let timestamp_raw = node["timestamp"].as_str();
 
@@ -521,22 +526,39 @@ async fn post_send_payment(
     Extension(pool): Extension<sqlx::SqlitePool>,
     Json(req): Json<SendPaymentRequest>,
 ) -> Result<Json<SendPaymentApiResponse>, (StatusCode, Json<ApiError>)> {
-    let rpc_url: Option<String> = sqlx::query_scalar("SELECT rpc_url FROM monitored_nodes WHERE id = ?")
-        .bind(&req.node_id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+    let rpc_url: Option<String> =
+        sqlx::query_scalar("SELECT rpc_url FROM monitored_nodes WHERE id = ?")
+            .bind(&req.node_id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiError {
+                        error: e.to_string(),
+                    }),
+                )
+            })?;
 
     let rpc_url = rpc_url.ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
-            Json(ApiError { error: format!("unknown node_id '{}'", req.node_id) }),
+            Json(ApiError {
+                error: format!("unknown node_id '{}'", req.node_id),
+            }),
         )
     })?;
 
     let payment_hash = payment_tracker::send_and_track(&pool, &req.node_id, &rpc_url, &req.invoice)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiError {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     Ok(Json(SendPaymentApiResponse { payment_hash }))
 }
@@ -581,37 +603,91 @@ async fn get_stats(
     let graph_nodes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_node_current")
         .fetch_one(&pool)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiError {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     let graph_channels: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM graph_channel_current")
         .fetch_one(&pool)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiError {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
-    let monitored_nodes: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM monitored_nodes WHERE enabled = 1")
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+    let monitored_nodes: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM monitored_nodes WHERE enabled = 1")
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiError {
+                        error: e.to_string(),
+                    }),
+                )
+            })?;
 
-    let nodes_online: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_status_current WHERE rpc_reachable = 1")
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+    let nodes_online: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM node_status_current WHERE rpc_reachable = 1")
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiError {
+                        error: e.to_string(),
+                    }),
+                )
+            })?;
 
-    let nodes_offline: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM node_status_current WHERE rpc_reachable = 0")
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+    let nodes_offline: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM node_status_current WHERE rpc_reachable = 0")
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiError {
+                        error: e.to_string(),
+                    }),
+                )
+            })?;
 
-    let total_peers: i64 = sqlx::query_scalar("SELECT COUNT(DISTINCT peer_pubkey) FROM peer_status_current WHERE connected = 1")
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+    let total_peers: i64 = sqlx::query_scalar(
+        "SELECT COUNT(DISTINCT peer_pubkey) FROM peer_status_current WHERE connected = 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiError {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     let total_channels: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM channel_status_current")
         .fetch_one(&pool)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiError {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     let active_issues = cache.read().await.len();
 
@@ -632,11 +708,18 @@ async fn get_nodes(
     Extension(pool): Extension<sqlx::SqlitePool>,
 ) -> Result<Json<Vec<MonitoredNode>>, (StatusCode, Json<ApiError>)> {
     let nodes = sqlx::query_as::<_, MonitoredNode>(
-        "SELECT id, name, rpc_url, enabled FROM monitored_nodes"
+        "SELECT id, name, rpc_url, enabled FROM monitored_nodes",
     )
     .fetch_all(&pool)
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiError {
+                error: e.to_string(),
+            }),
+        )
+    })?;
 
     Ok(Json(nodes))
 }
@@ -680,20 +763,38 @@ async fn delete_node(
     Path(id): Path<String>,
     Extension(pool): Extension<sqlx::SqlitePool>,
 ) -> Result<StatusCode, (StatusCode, Json<ApiError>)> {
-    let _ = sqlx::query("DELETE FROM node_status_current WHERE node_id = ?").bind(&id).execute(&pool).await;
-    let _ = sqlx::query("DELETE FROM peer_status_current WHERE node_id = ?").bind(&id).execute(&pool).await;
-    let _ = sqlx::query("DELETE FROM channel_status_current WHERE node_id = ?").bind(&id).execute(&pool).await;
-    let _ = sqlx::query("DELETE FROM tracked_payments WHERE node_id = ?").bind(&id).execute(&pool).await;
+    let _ = sqlx::query("DELETE FROM node_status_current WHERE node_id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM peer_status_current WHERE node_id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM channel_status_current WHERE node_id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("DELETE FROM tracked_payments WHERE node_id = ?")
+        .bind(&id)
+        .execute(&pool)
+        .await;
 
     sqlx::query("DELETE FROM monitored_nodes WHERE id = ?")
         .bind(&id)
         .execute(&pool)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { error: e.to_string() })))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiError {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     Ok(StatusCode::NO_CONTENT)
 }
-
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
