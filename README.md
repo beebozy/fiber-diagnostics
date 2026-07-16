@@ -358,6 +358,10 @@ sqlite3 fiber-diagnostics.db \
 To monitor more nodes, add additional records to `monitored_nodes`. No
 code changes are required.
 
+Instead of the above, run this:
+```bash
+sqlite3 fiber-diagnostics.db < seed.sql
+```
 ---
 
 ## API Overview
