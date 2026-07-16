@@ -150,7 +150,7 @@ All 8 diagnostic categories are implemented. Status reflects actual testing perf
 
 ## Video link
 
-*(add link here)*
+*https://www.loom.com/share/9c01c9fb878942dd81f53a83721fb2b8*
 
 ## Hosted setup
 
