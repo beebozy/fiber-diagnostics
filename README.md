@@ -42,6 +42,7 @@ operator tooling.
 - [Current Limitations](#current-limitations)
 - [Roadmap](#roadmap)
 - [Frontend](#frontend)
+- [Screenshots](#screenshots)
 - [Why This Submission Matters](#why-this-submission-matters)
 - [Status](#status)
 - [Documentation](#documentation)
@@ -447,6 +448,18 @@ npm run dev
 > active Fiber node services.
 
 Frontend development is in progress.
+
+---
+
+## Screenshots
+
+<img width="1440" height="855" alt="Screenshot 2026-07-16 at 10 55 47 PM" src="https://github.com/user-attachments/assets/1a44345f-bd64-4679-9bb1-501412f725e0" />
+<img width="1440" height="855" alt="Screenshot 2026-07-16 at 10 54 22 PM" src="https://github.com/user-attachments/assets/eeb2429b-a02f-4c20-8698-10ee730eb388" />
+<img width="1440" height="855" alt="Screenshot 2026-07-16 at 10 54 02 PM" src="https://github.com/user-attachments/assets/a0e7faa3-39c7-438e-8ffd-0c5a16ac1d1a" />
+<img width="1440" height="855" alt="Screenshot 2026-07-16 at 10 53 09 PM" src="https://github.com/user-attachments/assets/08deda81-46ce-47c8-ab30-3d363227000c" />
+<img width="1440" height="855" alt="Screenshot 2026-07-16 at 10 50 50 PM" src="https://github.com/user-attachments/assets/8057829b-b80c-4f21-880c-c8b1d005f5b9" />
+<img width="1440" height="855" alt="Screenshot 2026-07-16 at 9 24 26 PM" src="https://github.com/user-attachments/assets/d3d43aaf-0924-4f9c-b15c-535691a8119e" />
+
 
 ---
 
