@@ -144,6 +144,21 @@ All 8 diagnostic categories are implemented. Status reflects actual testing perf
 
 ## Frontend setup
 
+The frontend application is built using the nextjs 
+
+go to the directory ui 
+
+then 
+
+npm install 
+
+then run it via 
+
+npm run dev
+
+note: do not run the same port for the frontend and th fiber nodes 
+
+
 *(coming soon)*
 
 ---
