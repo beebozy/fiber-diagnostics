@@ -1,176 +1,627 @@
-# fiber-diagnostics
+  # fiber-diagnostics
 
-A diagnostics backend for the CKB Fiber Network (FNN) — polls live Fiber nodes, classifies failures across 8 categories (node, peer, channel, liquidity, invoice, routing, fee/policy, and asset-mismatch conditions), and exposes them as a clean JSON API for a dashboard to consume.
+  [![Rust](https://img.shields.io/badge/Rust-2021-orange.svg)](#tech-stack)
+  [![Axum](https://img.shields.io/badge/API-Axum-000000.svg)](#api-overview)
+  [![SQLite](https://img.shields.io/badge/DB-SQLite-07405E.svg)](#tech-stack)
+  [![Status](https://img.shields.io/badge/status-functional-success.svg)](#statu
+  s)
 
-FNN's `get_payment` RPC returns failures as free-text (`failed_error: Option<String>`), not structured error codes — there's no enum to switch on for "why did this fail." This project turns that into a rule-based classifier backed by real polled state.
+  A diagnostics backend for the **CKB Fiber Network (FNN)** that polls live
+  Fiber nodes, classifies failures across **8 diagnostic categories**, and
+  exposes the results through a clean **JSON API** for dashboards, CLIs, and
+  operator tooling.
 
-**Submission category:** Category 2 — Node, Routing, Cross-Chain, and Diagnostics Infrastructure
+  ---
 
----
+  ## Submission Category
 
-## Project overview
+  **Category 2 — Node, Routing, Cross-Chain, and Diagnostics Infrastructure**
 
-`fiber-diagnostics` is an infrastructure tool for FNN node operators. It continuously polls one or more Fiber nodes over RPC, persists their state (node reachability, peers, channels, in-flight payments, invoices) to SQLite, and runs an ordered rule engine over that state to surface plain-English diagnostic issues — instead of requiring an operator to manually cross-reference `list_channels`, `list_peers`, `get_payment`, and raw logs to figure out why something is broken.
+  ---
+  
+  ## Demo
 
-**Target audience:** Fiber node operators and developers building on top of Fiber who need to know why a payment, channel, or peer connection is failing, without reading verbose `RUST_LOG=info` output or making a dozen manual RPC calls per incident.
+  - **Video walkthrough:**
+  https://www.loom.com/share/9c01c9fb878942dd81f53a83721fb2b8
+  - **Hosted deployment:** Not yet available
+  - **API docs:** `docs/API.md`
+  - **Testing guide:** `docs/TESTING.md`
 
----
+  ---
 
-## What problem does it solve?
+  ## Table of Contents
 
-Diagnosing a Fiber node issue today means manually correlating several RPC calls (`node_info`, `list_peers`, `list_channels`, `get_payment`, `get_invoice`, the gossip graph) plus raw logs, with no single place that says "here's what's wrong and why." FNN's lack of structured payment error codes makes this worse — `failed_error` is just a string, so any tool built on top of it has to be a rule engine, not a lookup table.
+  - [Overview](#overview)
+  - [Why This Project Exists](#why-this-project-exists)
+  - [What Makes This Valuable](#what-makes-this-valuable)
+  - [Key Features](#key-features)
+  - [How It Works](#how-it-works)
+  - [Architecture](#architecture)
+  - [Diagnostic Categories](#diagnostic-categories)
+  - [Validation and Testing](#validation-and-testing)
+  - [Tech Stack](#tech-stack)
+  - [Quick Start](#quick-start)
+  - [API Overview](#api-overview)
+  - [Current Limitations](#current-limitations)
+  - [Roadmap](#roadmap)
+  - [Frontend](#frontend)
+  - [Why This Submission Matters](#why-this-submission-matters)
+  - [Status](#status)
 
-`fiber-diagnostics` closes that gap: a background poller keeps a live picture of node/peer/channel/payment/invoice state in a local database, and an ordered rule engine (deterministic checks first, string-matching last, per Fiber's own recommended approach) turns that state into concrete, categorized issues exposed over a REST API — the foundation a dashboard or CLI can build on without re-implementing any diagnostic logic itself.
+  ---
 
----
+  ## Overview
 
-## System design
+  `fiber-diagnostics` is an infrastructure tool for **Fiber node operators** and
+  **developers building on top of Fiber**.
 
-### Two-team split, one shared SQLite schema as the contract
+  Its purpose is simple:
 
-| Owner | Responsibility |
-|---|---|
-| **Data collection** | `FiberRpcClient` (all RPC methods), the node registry (`monitored_nodes`), the fast/slow polling loops, per-node failure isolation (a down node doesn't crash the poll cycle — it *is* the signal), `poller_runs` logging |
-| **Diagnostics & API** | The ordered rule engine (8 categories), payment/invoice tracking, the axum REST API, response contract design |
+  > turn Fiber’s low-level, fragmented operational signals into actionable
+  diagnostics.
 
-### Runtime flow
+  Today, diagnosing failures in FNN often requires manually correlating:
 
-```
-Fiber Nodes (node1, node2, ...)
-        |
-        | JSON-RPC (FiberRpcClient)
-        |
-   ┌────┴─────────────────────────┐
-   │                              │
-Fast loop (5s)                Slow loop (30s)
-node_info, list_peers,        graph_nodes,
-list_channels                 graph_channels
-   │                              │
-   └────┬─────────────────────────┘
-        |
-   SQLite (*_current tables)
-        |
-   ┌────┴─────────────────────────┐
-   │                              │
-payment_tracker (10s)         Diagnostics engine
-polls tracked_payments        (runs at end of each
-via get_payment/get_invoice   fast-loop tick)
-   │                              │
-   └──────────────┬───────────────┘
-                  |
-         8 ordered rules -> Vec<Issue>
-                  |
-          In-memory issue cache
-                  |
-     axum REST API (CORS-enabled)
-     GET /issues, /issues/{kind}
-     POST /payments (originate + auto-track)
-                  |
-          Dashboard / CLI
-```
+  - `node_info`
+  - `list_peers`
+  - `list_channels`
+  - `get_payment`
+  - `get_invoice`
+  - gossip graph data
+  - raw logs
 
-### Key design decisions
+  That process is slow, error-prone, and difficult to automate.
 
-- **In-memory issue cache, not persisted issue history.** The API serves whatever the last poll pass computed; there's no "resolved" state to manage — an issue simply stops appearing once its underlying condition clears on the next pass. Chosen for simplicity given the timeline; a persisted, deduplicated issue history (with acknowledge/mute states) was prototyped and works, but was deliberately descoped in favor of shipping.
-- **Rule engine, not a lookup table**, per FNN's own unstructured `failed_error` string — rules are ordered deterministic checks (channel/peer state, computed balance thresholds) before falling back to `failed_error` substring matching, which is inherently approximate.
-- **Amounts and UDT scripts are not plain JSON.** FNN serializes `u128`/`u64` amounts as hex strings, and an invoice's requested UDT is a raw CKB Molecule-encoded binary blob inside the invoice's `attrs`, not a JSON object. Both were discovered and handled explicitly (see [Current functionality](#current-functionality)) rather than assumed.
+  `fiber-diagnostics` solves this by continuously polling one or more live Fiber
+  nodes over JSON-RPC, storing their current operational state in SQLite, and
+  running an ordered rule engine that converts raw state into plain-English
+  diagnostic issues. Those issues are then exposed through a REST API that a
+  dashboard, CLI, or other observability tooling can consume.
 
----
+  ---
 
-## Setup environment
+  ## Why This Project Exists
 
-**Stack:** Rust (2021 edition), axum 0.8 for the HTTP API, sqlx 0.8 (SQLite, runtime-checked queries) for persistence, tokio for the async runtime, reqwest for the FNN JSON-RPC client, tower-http for CORS, chrono/uuid/anyhow/thiserror/tracing for the usual supporting concerns.
+  One of the biggest practical problems in the current FNN operator experience
+  is that payment failures are not returned as structured error codes.
 
-**Prerequisites:** a running `fnn` process (or several) — see [Run a Fiber Node](#) or the [Docker guide](#).
+  FNN’s `get_payment` RPC reports failures as:
 
-### Local setup
+  - `failed_error: Option<String>`
 
-```bash
-export DATABASE_URL="sqlite://fiber-diagnostics.db"
-cargo run
-```
+  That means the system exposes a free-text error message rather than a stable,
+  machine-readable enum or code. So if an operator asks:
 
-Migrations apply automatically on startup (`sqlx::migrate!`). The API listens on `http://127.0.0.1:3000`; register nodes to monitor with a plain insert — no code change required to add a node:
+  > Why did this payment fail?
 
-```bash
-sqlite3 fiber-diagnostics.db "INSERT INTO monitored_nodes (id, name, rpc_url, created_at, updated_at) VALUES ('node1','node1','http://127.0.0.1:8227','<now>','<now>');"
-```
+  there is no single RPC response that gives a structured answer.
 
-See [`docs/API.md`](docs/API.md) for the full endpoint contract and [`docs/TESTING.md`](docs/TESTING.md) for a rule-by-rule testing runbook (both synthetic and real-node testing procedures).
+  That creates three major problems:
 
----
+  1. **Operators must manually investigate incidents**
+  2. **Tooling cannot rely on stable error-code lookups**
+  3. **Every dashboard or automation layer must reinvent its own diagnostic 
+  logic**
 
-## Tooling
+  `fiber-diagnostics` closes that gap by acting as a reusable diagnostics
+  backend for the Fiber ecosystem.
 
-- **FNN JSON-RPC** — `node_info`, `list_peers`, `list_channels`, `graph_nodes`, `graph_channels`, `send_payment`, `get_payment`, `parse_invoice`, `get_invoice`, `new_invoice`, `connect_peer`, `disconnect_peer`, `open_channel` (via a hand-rolled `FiberRpcClient`, no external Fiber SDK dependency).
-- **CKB Molecule decoding** — a minimal hand-written decoder for the Script table format (`code_hash: Byte32`, `hash_type: byte`, `args: Bytes`), used to extract UDT identity from an invoice's binary-encoded `attrs`. Verified byte-for-byte against a real captured `get_invoice` response (see the pinned unit test in `asset_mismatch.rs`).
-- **sqlx** with runtime-checked queries (`query_as`) rather than the `sqlx::query!` macro family — deliberate, to avoid requiring a reachable `DATABASE_URL` or a committed offline query cache at compile time while the schema was still moving.
+  ---
 
----
+  ## What Makes This Valuable
 
-## Current functionality
+  This project is valuable because it does not just display raw node state — it
+  **interprets** that state.
 
-All 8 diagnostic categories are implemented. Status reflects actual testing performed, not aspiration:
+  ### Instead of raw infrastructure signals, it provides:
+  - categorized issues
+  - plain-English explanations
+  - API-ready diagnostic outputs
+  - a foundation for dashboards and CLIs
+  - a reusable backend for future Fiber observability tooling
 
-| Category | Status |
-|---|---|
-| **Node Failure** (`node-down`) | Confirmed against real unreachable nodes |
-| **Channel Readiness** (`channel-not-ready`) | Confirmed against real channel state (a wrong-constant bug was found and fixed here) |
-| **Liquidity Failure** (`insufficient-balance`) | Confirmed against real channel balances (hex-string amount parsing bug found and fixed) |
-| **Invoice Failure** (`invoice-expired`) | Confirmed via both real and synthetic invoices (hex-encoded expiry timestamp parsing fixed) |
-| **Peer Connectivity** (`peer-offline`) | Confirmed real-time — poller now marks peers disconnected as they actually disconnect (previously hardcoded always-connected) |
-| **Policy/Fee Failure** (`fee-too-low`) | Rule logic confirmed via synthetic failed-payment data |
-| **Routing Failure** (`no-route`) | Rule logic confirmed via synthetic data; known gap — FNN's synchronous pre-flight pathfinding rejection (no `payment_hash` ever generated) isn't yet captured by the pipeline, only post-dispatch routing failures are |
-| **Asset Mismatch** (`asset-mismatch`) | Redesigned after discovering the invoice's UDT is Molecule-encoded binary, not JSON — decoder is unit-tested against a real captured response |
+  ### In other words:
+  It turns Fiber from a system that is **inspectable only by experts** into one
+  that is **operable through tooling**.
 
-**Also implemented:**
+  ---
 
-- REST API: `GET /issues` (with `kind`/`severity` filters), `GET /issues/{kind}`, `POST /payments` (originates a real payment and auto-registers it for tracking — no manual DB step required)
-- CORS enabled for browser-based dashboard consumption
-- JSON error responses and a `generated_at`/`count` wrapper on every response, so a dashboard can show data freshness
+  ## Key Features
 
----
+  - Polls one or more **live FNN nodes** over JSON-RPC
+  - Persists current state to **SQLite**
+  - Tracks:
+    - node reachability
+    - peer connectivity
+    - channel state
+    - payments
+    - invoices
+  - Classifies failures into **8 diagnostic categories**
+  - Exposes results through a clean **Axum REST API**
+  - Supports **payment origination and auto-tracking**
+  - Designed for a **dashboard**, **CLI**, or external operator tools
+  - Uses a **rule engine**, not a fragile one-shot lookup table
+  - Handles Fiber-specific serialization edge cases such as:
+    - hex-encoded amounts
+    - Molecule-encoded invoice UDT attributes
 
-## Future functionality
+  ---
 
-- **Persisted issue history** (`issues_current`/`issue_events` with open/acknowledged/muted/resolved states) — prototyped and proven to work during development, descoped from the shipped version in favor of a simpler in-memory cache given the timeline.
-- **Close the pre-flight routing-failure gap** — capture `send_payment`'s synchronous RPC error (not just post-dispatch failures) so `no-route` is fully provable end-to-end, not just via synthetic data.
-- **CLI** (`fiber-diagnose watch/check/payment/channel/peers/node`) — the engine is already structured so the CLI would be a pure formatter on top of it, no diagnostic logic duplicated.
-- **Dashboard** — the API contract (`docs/API.md`) is written and stable; the frontend itself is in progress.
-- **Verify the channel-side UDT assumption** — `asset-mismatch` assumes `list_channels`' `funding_udt_type_script` comes back as a plain JSON object (standard CKB RPC convention); confirmed correct for native-CKB channels, not yet confirmed against a real UDT-funded channel.
-- **`fee-too-low`/`no-route` real-node proof** beyond synthetic data, and broader `max_fee_amount` support on `POST /payments`.
+  ## How It Works
 
----
+  At runtime, `fiber-diagnostics` continuously collects state from monitored
+  Fiber nodes, stores the latest snapshot in SQLite, and evaluates it through an
+  ordered diagnostics engine.
+  
+  ### Polling cadence
 
-## Frontend setup
+  - **Fast loop (every 5s)**
+    Polls:
+    - `node_info`
+    - `list_peers`
+    - `list_channels`
 
-The frontend application is built using the nextjs 
+  - **Slow loop (every 30s)**
+    Polls:
+    - `graph_nodes`
+    - `graph_channels`
 
-go to the directory ui 
+  - **Payment tracker (every 10s)**
+    Polls tracked payments and invoices via:
+    - `get_payment`
+    - `get_invoice`
 
-then 
+  ### Diagnostics lifecycle
 
-npm install 
+  1. Poll live Fiber state
+  2. Persist current-state records to SQLite
+  3. Run ordered diagnostic rules
+  4. Produce categorized issues
+  5. Store latest issues in an in-memory cache
+  6. Serve them over a JSON API
 
-then run it via 
+  Issues are **not persisted historically** in the shipped version. The API
+  always reflects the most recent computed diagnostic view. If the underlying
+  condition clears, the issue disappears on the next poll cycle.
+  
+  ---
 
-npm run dev
+  ## Architecture
 
-note: do not run the same port for the frontend and th fiber nodes 
+  ### High-level flow
 
+  ```text
+  Fiber Nodes (node1, node2, ...)
+          |
+          | JSON-RPC
+          v
+  +-------------------------------+
+  |       FiberRpcClient          |
+  +-------------------------------+
+          |
+          +-------------------------------+
+          |                               |
+          v                               v
+   Fast Poll Loop (5s)               Slow Poll Loop (30s)
+   - node_info                       - graph_nodes
+   - list_peers                      - graph_channels
+   - list_channels
+          |                               |
+          +---------------+---------------+
+                          |
+                          v
+               SQLite current-state tables
+          +---------------+---------------+
+          |                               |
+          v                               v
+   payment_tracker (10s)           Diagnostics engine
+   - get_payment                   - ordered rules
+   - get_invoice                   - 8 categories
+          |                               |
+          +---------------+---------------+
+                          |
+                          v
+                 In-memory issue cache
+                          |
+                          v
+                   Axum REST API
+                          |
+                          v
+                 Dashboard / CLI / UI
+                 
+  Shared storage contract
 
-*(coming soon)*
+  The project is conceptually split into two areas, with SQLite acting as the
+  contract between them:
 
----
+  ┌───────────────┬─────────────────────────────────────────────────────────┐
+  │     Area      │                     Responsibility                      │
+  ├───────────────┼─────────────────────────────────────────────────────────┤
+  │ Data          │ RPC client, monitored node registry, polling loops,     │
+  │ collection    │ per-node failure isolation, poll run logging            │
+  ├───────────────┼─────────────────────────────────────────────────────────┤
+  │ Diagnostics & │ Rule engine, payment/invoice tracking, issue            │
+  │  API          │ classification, REST API contract                       │
+  └───────────────┴─────────────────────────────────────────────────────────┘
 
-## Video link
+  Important design decisions
 
-*https://www.loom.com/share/9c01c9fb878942dd81f53a83721fb2b8*
+  1. Rule engine, not lookup table
 
-## Hosted setup
+  Because Fiber returns unstructured failure strings, diagnostics cannot rely on
+  a static enum or code-based switch statement.
 
-*(add link here)*
+  The engine therefore uses:
 
-## Screenshots
+  - deterministic checks first
+  - topology/state checks second
+  - substring matching last
 
-*(add screenshots here)*
+  This makes the classifier more robust and more aligned with how FNN behaves
+  today.
+
+  2. Per-node failure isolation
+
+  If one monitored node goes down, it does not crash the entire poll cycle.
+
+  That failure is treated as signal, not as a fatal collector error.
+
+  This is important operationally: a dead node is itself a diagnostic condition.
+
+  3. Current-state issue model
+
+  The shipped version intentionally uses an in-memory latest-issues cache rather
+  than a historical issue-events model.
+
+  This was chosen to prioritize shipping a working diagnostics backend quickly
+  and cleanly. A persisted issue-history model was prototyped during development
+  but deliberately descoped from the submission version.
+  
+  4. Explicit handling of Fiber serialization details
+
+  Two important Fiber-specific implementation details had to be discovered and
+  handled correctly:
+
+  - numeric amounts are serialized as hex strings
+  - invoice UDT information is embedded as Molecule-encoded binary, not plain
+  JSON
+
+  These are not cosmetic details — they directly affect diagnostic correctness.
+
+  ---
+  Diagnostic Categories
+  
+  The engine currently classifies issues into the following 8 categories:
+
+  ┌─────────────────────────────────┬───────────────────────────────────────┐
+  │            Category             │                Meaning                │
+  ├─────────────────────────────────┼───────────────────────────────────────┤
+  │ Node Failure (node-down)        │ The monitored node is unreachable or  │
+  │                                 │ unavailable                           │
+  ├─────────────────────────────────┼───────────────────────────────────────┤
+  │ Peer Connectivity              │ A required peer is disconnected or     │
+  │ (peer-offline)                 │ offline                                │
+  ├────────────────────────────────┼────────────────────────────────────────┤
+  │ Channel Readiness              │ A channel exists but is not in a       │
+  │ (channel-not-ready)            │ usable/ready state                     │
+  ├────────────────────────────────┼────────────────────────────────────────┤
+  │ Liquidity Failure              │ A payment cannot be sent because       │
+  │ (insufficient-balance)         │ usable balance is insufficient         │
+  ├────────────────────────────────┼────────────────────────────────────────┤
+  │ Invoice Failure                │ The invoice is expired or otherwise    │
+  │ (invoice-expired)              │ invalid for execution                  │
+  ├────────────────────────────────┼────────────────────────────────────────┤
+  │ Routing Failure (no-route)     │ A payment cannot find a valid route    │
+  │                                │ through the network                    │
+  ├────────────────────────────────┼────────────────────────────────────────┤
+  │ Fee / Policy Failure           │ Payment parameters violate fee or      │
+  │ (fee-too-low)                  │ policy constraints                     │
+  ├────────────────────────────────┼────────────────────────────────────────┤
+  │ Asset Mismatch                 │ The invoice asset does not match the   │
+  │ (asset-mismatch)               │ asset available on the channel         │
+  └────────────────────────────────┴────────────────────────────────────────┘
+
+  Why these categories matter
+
+  Together, these 8 categories cover the most important operator-facing failure
+  domains:
+
+  - node health
+  - peer health
+  - channel usability
+  - liquidity sufficiency
+  - invoice validity
+  - route availability
+  - fee policy compliance
+  - asset compatibility
+
+  That makes the API useful not only for developers, but also for operational
+  dashboards and support tooling.
+
+  ---
+  Validation and Testing
+  
+  This project was validated based on actual implementation and testing, not
+  just intended design.
+
+  Current validation status
+
+  ┌──────────────────────────────────┬──────────────────────────────────────┐
+  │             Category             │                Status                │
+  ├──────────────────────────────────┼──────────────────────────────────────┤
+  │ Node Failure (node-down)         │ Confirmed against real unreachable   │
+  │                                  │ nodes                                │
+  │ Channel Readiness            │ Confirmed against real channel state     │
+  │ (channel-not-ready)          │                                          │
+  ├──────────────────────────────┼──────────────────────────────────────────┤
+  │ Liquidity Failure            │ Confirmed against real balances          │
+  │ (insufficient-balance)       │                                          │
+  ├──────────────────────────────┼──────────────────────────────────────────┤
+  │ Invoice Failure              │ Confirmed via real and synthetic         │
+  │ (invoice-expired)            │ invoices                                 │
+  ├──────────────────────────────┼──────────────────────────────────────────┤
+  │ Peer Connectivity            │ Confirmed in real time                   │
+  │ (peer-offline)               │                                          │
+  ├──────────────────────────────┼──────────────────────────────────────────┤
+  │ Policy/Fee Failure           │ Rule logic confirmed with synthetic      │
+  │ (fee-too-low)                │ failed-payment data                      │
+  ├──────────────────────────────┼──────────────────────────────────────────┤
+  │ Routing Failure (no-route)   │ Rule logic confirmed with synthetic data │
+  ├──────────────────────────────┼──────────────────────────────────────────┤
+  │ Asset Mismatch               │ Verified using a real captured invoice   │
+  │ (asset-mismatch)             │ response and unit-tested Molecule        │
+  │                              │ decoding                                 │
+  └──────────────────────────────┴──────────────────────────────────────────┘
+
+  Bugs discovered and fixed during development
+
+  The validation process surfaced and fixed real implementation bugs, including:
+
+  - wrong constant usage in channel-readiness logic
+  - hex-string amount parsing bug in liquidity checks
+  - invoice expiry timestamp parsing bug
+  - previous always-connected peer assumption
+  - incorrect asset-mismatch assumptions before Molecule decoding was introduced
+
+  This matters because it shows the project is not just conceptually sound — it
+  has already survived practical edge-case debugging.
+
+  Documentation
+
+  For the full testing runbook, see:
+
+  - docs/TESTING.md
+
+  ---
+  Tech Stack
+  
+  - Rust 2021
+  - Axum 0.8 for the HTTP API
+  - Tokio for async runtime
+  - sqlx 0.8 + SQLite for persistence
+  - reqwest for the JSON-RPC client
+  - tower-http for CORS
+  - chrono, uuid, anyhow, thiserror, tracing
+
+  RPC coverage
+
+  The hand-rolled FiberRpcClient supports the Fiber RPC methods required by the
+  diagnostics backend, including:
+
+  - node_info
+  - list_peers
+  - list_channels
+  - graph_nodes
+  - graph_channels
+  - send_payment
+  - get_payment
+  - parse_invoice
+  - get_invoice
+  - new_invoice
+  - connect_peer
+  - disconnect_peer
+  - open_channel
+
+  This project intentionally does not depend on an external Fiber SDK.
+
+  ---
+  Quick Start
+  
+  Prerequisites
+
+  You need:
+
+  - Rust installed
+  - SQLite available locally
+  - one or more running fnn nodes
+
+  Run locally
+
+  export DATABASE_URL="sqlite://fiber-diagnostics.db"
+  cargo run
+
+  On startup:
+
+  - migrations are applied automatically via sqlx::migrate!
+  - the API listens on http://127.0.0.1:3000
+
+  Register a monitored node
+
+  After startup, register a Fiber node in the database:
+
+  sqlite3 fiber-diagnostics.db \
+  "INSERT INTO monitored_nodes (id, name, rpc_url, created_at, updated_at)
+   VALUES ('node1', 'node1', 'http://127.0.0.1:8227', datetime('now'), 
+  datetime('now'));"
+
+  To monitor more nodes, add additional records to monitored_nodes. No code
+  changes are required.
+
+  ---
+  API Overview
+  
+  The backend exposes a CORS-enabled JSON API for consumption by dashboards,
+  frontends, and external tooling.
+
+  Endpoints
+  
+  GET /issues
+
+  Returns the latest computed issue set.
+
+  Supports filters such as:
+
+  - kind
+  - severity
+
+  GET /issues/{kind}
+
+  Returns issues for a specific diagnostic kind.
+
+  POST /payments
+
+  Originate a real payment and automatically register it for tracking.
+
+  This removes the need for a manual DB registration step after dispatch.
+
+  Response shape
+
+  Every response includes:
+
+  - generated_at
+  - count
+
+  The API also returns structured JSON error responses for failure cases.
+
+  For the full request/response contract, see:
+
+  - docs/API.md
+
+  ---
+  Current Limitations
+  
+  This submission is functional, but intentionally honest about current
+  boundaries.
+
+  1. Pre-flight routing failure gap
+
+  There is a known gap around synchronous send_payment routing rejection.
+
+  Current behavior:
+  - post-dispatch routing failures are handled
+  - synchronous pre-flight pathfinding failures are not yet fully captured
+  end-to-end if no payment_hash is created
+  
+  2. Channel-side UDT assumption
+
+  asset-mismatch currently assumes that list_channels returns
+  funding_udt_type_script as a standard JSON object.
+
+  Current status:
+  - confirmed for native CKB channels
+  - not yet confirmed against a real UDT-funded channel
+  
+  3. No persisted issue history in shipped version
+
+  The current version serves only the latest computed issues.
+
+  It does not yet include:
+  - historical issue timelines
+  - acknowledged state
+  - muted state
+  - resolved state
+  
+  Those were considered and prototyped, but intentionally descoped for the
+  submission version to keep the implementation focused.
+
+  ---
+  Roadmap
+  
+  Planned next steps include:
+
+  - persisted issue history with:
+    - open
+    - acknowledged
+    - muted
+    - resolved
+  - full support for synchronous pre-flight routing failure capture
+  - broader max_fee_amount support on POST /payments
+  - real-node validation for fee-too-low and no-route
+  - a CLI interface, for example:
+    - fiber-diagnose watch
+    - fiber-diagnose check
+    - fiber-diagnose payment
+    - fiber-diagnose channel
+    - fiber-diagnose peers
+    - fiber-diagnose node
+  - a completed dashboard frontend
+
+  ---
+  Frontend
+  
+  A dashboard frontend is being built with Next.js.
+
+  Local frontend setup
+
+  cd ui
+  npm install
+  npm run dev
+
+  Note
+
+  Do not run the frontend on the same port as:
+
+  - the backend API
+  - any active Fiber node services
+
+  Frontend status
+
+  Frontend development is in progress.
+
+  ---
+  Why This Submission Matters
+  
+  fiber-diagnostics is not just a monitoring tool — it is a missing piece of
+  Fiber operator infrastructure.
+
+  It matters because it:
+
+  - reduces operator debugging time
+  - translates unstructured Fiber failures into structured diagnostics
+  - provides a reusable backend for dashboards and CLIs
+  - improves observability without requiring changes to FNN itself
+  - creates a practical foundation for future operational tooling in the Fiber
+  ecosystem
+
+  In short:
+  
+  ▎ this project turns difficult-to-interpret Fiber behavior into actionable 
+  ▎ infrastructure intelligence.
+
+  That is valuable for both individual node operators and the broader ecosystem.
+
+  ---
+  Status
+  
+  fiber-diagnostics is currently a functional backend diagnostics engine and API
+  with:
+
+  - all 8 diagnostic categories implemented
+  - a working live polling architecture
+  - SQLite-backed current-state storage
+  - real-node and synthetic validation across core rule paths
+  - a stable API surface for a dashboard or CLI to build on
+
+  It is already useful today, while also leaving a clear path for deeper
+  observability features in future iterations.
+
+  ---
+  Documentation
+  
+  - docs/API.md — full API contract
+  - docs/TESTING.md — rule-by-rule testing guide
+
+  ---
+  License
+  
+   MIT 
