@@ -12,7 +12,7 @@ Two levels of testing, and they prove different things:
 
 ## Before you start
 
-- First run -- sqlite3 fiber-diagnostics.db < seed.sql
+- First run -- sqlite3 fiber-diagnostics.db < seed.sql. Alternatively, insert rpc urls through the frontend dashboard
 - The API serves an **in-memory cache**, rebuilt from a full DB scan every
   ~5s (the fast poll loop). After changing the DB, **wait ~5s**, then curl.
 - An issue disappears from `/issues` only when you fix or delete the
@@ -91,9 +91,7 @@ curl http://127.0.0.1:3000/issues/insufficient-balance
 ```
 
 `0x174876e800` = 100,000,000,000 remote, local = 0 → clearly below
-`remote/10`, should fire. Note `state_name='ChannelReady'` here on purpose —
-proves this rule triggers independently of channel readiness, not as a side
-effect of the channel also being flagged not-ready.
+`remote/10`, should fire.
 
 ---
 
@@ -113,9 +111,6 @@ sleep 6
 curl http://127.0.0.1:3000/issues/invoice-expired
 ```
 
-`invoice_status` is deliberately `'Open'`, not `'Expired'` — this only fires
-through the hex-timestamp parsing path, which is the part we fixed earlier.
-If this comes back empty, that specific fix has regressed.
 
 ---
 
@@ -164,13 +159,7 @@ curl http://127.0.0.1:3000/issues/asset-mismatch
 
 ## 8. peer-offline — currently CANNOT be end-to-end tested
 
-This is the one open bug: the real poller always writes `connected=1` and
-never sets it to `0` when a peer actually disconnects (`main.rs`'s
-`peer_status_current` insert is hardcoded `VALUES (?, ?, ?, 1, ...)`).
-Nothing you do from the API/DB side proves the *detection* path works,
-because the poller can never produce the input that would trigger it.
-
-You can still confirm the **rule logic itself** is correct (separately from
+You can confirm the **rule logic itself** is correct (separately from
 proving the real pipeline works) by inserting a synthetic disconnected peer
 directly:
 
@@ -225,7 +214,7 @@ General pattern for every category below:
    real `get_payment`/`get_invoice` results. That's a legitimate part of the
    real pipeline, not a shortcut — it's just how "tell our tool what to
    watch" currently works, since there's no discovery mechanism yet.
-4. Then `curl http://127.0.0.1:3000/issues/<kind>` as before.
+4. Then `curl http://127.0.0.1:3000/issues/<kind>`.
 
 Ports, per your actual setup: `node1` → `127.0.0.1:8227`, `node2` →
 `127.0.0.1:8237`.
@@ -244,7 +233,7 @@ curl http://127.0.0.1:3000/issues/node-down
 Restart node2 the way you normally do, wait 6s, confirm the issue is gone
 from `/issues`.
 
-## 2. peer-offline (real) — this will PROVE the known poller bug, not fix it
+## 2. peer-offline (real)
 
 ```bash
 # get node2's peer_id from node1's list_peers first
@@ -253,7 +242,7 @@ curl -s -X POST http://127.0.0.1:8227 -H "Content-Type: application/json" \
 
 # then disconnect it from node1's side
 curl -s -X POST http://127.0.0.1:8227 -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"disconnect_peer","params":[{"peer_id":"<peer_id from above>"}]}'
+  -d '{"jsonrpc":"2.0","id":2,"method":"disconnect_peer","params":[{"pubkey":"<peer_id from above>"}]}'
 
 sleep 6
 curl http://127.0.0.1:3000/issues/peer-offline
@@ -261,13 +250,10 @@ curl http://127.0.0.1:3000/issues/peer-offline
 
 **Expected result: empty, even though the peer really is disconnected.**
 That's not a passing test — it's real-world confirmation of the bug we
-already know about (`peer_status_current.connected` is hardcoded `1` in the
-poller). This is worth doing once specifically to show Habeeb concrete
-proof, not just "the rule doesn't work."
+already know about"
 
 ## 3. channel-not-ready (real)
 
-You likely already have real `NegotiatingFunding` channels sitting there.
 Check current real state directly against the node first:
 
 ```bash
@@ -280,7 +266,7 @@ again within the next few seconds (before it confirms):
 
 ```bash
 curl -s -X POST http://127.0.0.1:8227 -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"open_channel","params":[{"peer_id":"<node2 peer_id>","funding_amount":"0xba43b7400","public":true}]}'
+  -d '{"jsonrpc":"2.0","id":2,"method":"open_channel","params":[{"pubkey":"<node2 peer_id>","funding_amount":"0xba43b7400","public":true}]}'
 
 sleep 6
 curl http://127.0.0.1:3000/issues/channel-not-ready
